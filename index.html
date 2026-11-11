@@ -27,7 +27,7 @@
             { id: 'HIJAU', name: 'HIJAU', hex: '#10B981' },
             { id: 'KUNING', name: 'KUNING', hex: '#F59E0B' },
             { id: 'UNGU', name: 'UNGU', hex: '#8B5CF6' },
-            { id: 'ORANGE', name: 'ORANGE', hex: '#F97316' } // Default Impostor
+            { id: 'ORANGE', name: 'ORANGE', hex: '#F97316' }
         ];
 
         const LOCATIONS_DATA = Array.from({ length: 18 }, (_, i) => ({
@@ -46,7 +46,7 @@
         const generateInitialTeams = () => Array.from({ length: 18 }, (_, idx) => ({
             id: `TEAM-${(idx + 1).toString().padStart(2, '0')}`,
             name: `Tim Power ${idx + 1}`,
-            membersCount: 12, // 10 - 14 peserta per tim
+            membersCount: 12,
             keyword: ANIMAL_KEYWORDS[idx % ANIMAL_KEYWORDS.length]
         }));
 
@@ -69,19 +69,17 @@
             const letters = keyword.split('');
             const clues = {};
             citizenColors.forEach((color, idx) => { clues[color.id] = letters[idx] || 'X'; });
-            clues[impostorColorId] = 'Z'; // Huruf pengecoh impostor
+            clues[impostorColorId] = 'Z';
             return { teamId, keyword, impostorColorId, clues };
         };
 
         function App() {
-            // Mode Tampilan: PARTICIPANT atau ADMIN
             const [viewMode, setViewMode] = useState('PARTICIPANT');
-            
-            // Alur Peserta: LOGIN -> SELECT_TEAM -> BRIEFING -> GAMEPLAY -> FINAL -> COMPLETED -> VOUCHER
             const [participantStep, setParticipantStep] = useState('LOGIN');
             const [inputNid, setInputNid] = useState('');
             const [inputPassword, setInputPassword] = useState('');
             const [selectedTeamId, setSelectedTeamId] = useState('TEAM-01');
+            const [showRulesInfo, setShowRulesInfo] = useState(false);
 
             const teams = useMemo(() => generateInitialTeams(), []);
             const players = useMemo(() => generateInitialPlayers(teams), [teams]);
@@ -93,7 +91,6 @@
                 return map;
             });
 
-            // State Game Real-time
             const [scannedPlayers, setScannedPlayers] = useState({});
             const [scannedClues, setScannedClues] = useState({});
             const [submissions, setSubmissions] = useState({});
@@ -102,7 +99,6 @@
                 { id: 'LOG-001', time: new Date().toLocaleTimeString(), action: 'SYSTEM_INIT', details: 'Aplikasi Impostor Hunt siap di Trans Studio Cibubur.' }
             ]);
 
-            // Modal & Form State
             const [scanResultModal, setScanResultModal] = useState(null);
             const [inputKeyword, setInputKeyword] = useState('');
             const [selectedImpostorGuess, setSelectedImpostorGuess] = useState('ORANGE');
@@ -115,7 +111,6 @@
                 setAuditLogs(prev => [{ id: `LOG-${Date.now().toString().slice(-4)}`, time: new Date().toLocaleTimeString(), action, details }, ...prev]);
             };
 
-            // Proses Scan QR (Pemain atau Lokasi)
             const processQrScanToken = (rawToken, isDecoy = false) => {
                 if (isDecoy) {
                     const randomSlogan = CORPORATE_SLOGANS[Math.floor(Math.random() * CORPORATE_SLOGANS.length)];
@@ -126,7 +121,6 @@
                     };
                 }
 
-                // Cek apakah scan QR Pemain
                 const matchedPlayer = players.find(p => p.id === rawToken);
                 if (matchedPlayer) {
                     setScannedPlayers(prev => ({
@@ -143,7 +137,6 @@
                     };
                 }
 
-                // Cek apakah scan QR Lokasi
                 const matchedLoc = LOCATIONS_DATA.find(l => l.code === rawToken);
                 if (matchedLoc) {
                     const assignedPlayer = players.find(p => p.teamId === activeTeam.id && p.locationId === matchedLoc.locationId);
@@ -187,7 +180,6 @@
                     [activeTeam.id]: { submitted: true, submissionTime, keywordAns: cleanKeyword, impostorAns: selectedImpostorGuess, isCorrect: isBothCorrect }
                 }));
 
-                // Generate voucher makan untuk seluruh anggota tim
                 const newVouchers = { ...vouchers };
                 for (let i = 1; i <= activeTeam.membersCount; i++) {
                     newVouchers[`VCH-${activeTeam.id}-${i}`] = {
@@ -212,7 +204,6 @@
 
             return (
                 <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-                    {/* TOP NAVBAR / SWITCHER */}
                     <header className="bg-slate-900 border-b border-slate-800 px-4 py-3 flex flex-wrap justify-between items-center gap-4 sticky top-0 z-50">
                         <div className="flex items-center gap-3">
                             <div className="bg-red-600 px-3 py-1.5 rounded-xl font-black tracking-wider text-white shadow-lg shadow-red-600/30 text-sm md:text-base">
@@ -230,17 +221,13 @@
                         </div>
                     </header>
 
-                    {/* MAIN CONTENT CONTAINER */}
                     <main className="flex-1 p-4 md:p-6 max-w-5xl mx-auto w-full flex flex-col justify-center">
                         {viewMode === 'PARTICIPANT' ? (
                             <div className="max-w-md mx-auto bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col min-h-[700px] w-full">
                                 
-                                {/* STEP 1: LOGIN NID */}
                                 {participantStep === 'LOGIN' && (
                                     <div className="p-6 my-auto space-y-6 text-center">
-                                        <div className="w-16 h-16 bg-red-600/20 border border-red-500 rounded-2xl mx-auto flex items-center justify-center text-2xl shadow-lg">
-                                            ⚡
-                                        </div>
+                                        <div className="w-16 h-16 bg-red-600/20 border border-red-500 rounded-2xl mx-auto flex items-center justify-center text-2xl shadow-lg">⚡</div>
                                         <div className="space-y-2">
                                             <h2 className="text-xl font-black text-white">LOGIN PESERTA</h2>
                                             <p className="text-xs text-slate-400">Masukkan NID dan Password untuk mengakses game</p>
@@ -261,7 +248,6 @@
                                     </div>
                                 )}
 
-                                {/* STEP 2: PILIH TIM */}
                                 {participantStep === 'SELECT_TEAM' && (
                                     <div className="p-6 my-auto space-y-6 text-center">
                                         <div className="space-y-2">
@@ -279,7 +265,6 @@
                                     </div>
                                 )}
 
-                                {/* STEP 3: BRIEFING & SAFETY RULES */}
                                 {participantStep === 'BRIEFING' && (
                                     <div className="p-6 flex flex-col justify-between flex-1">
                                         <div className="space-y-4">
@@ -304,7 +289,7 @@
                                     </div>
                                 )}
 
-                                {/* STEP 4: GAMEPLAY & MISSION DASHBOARD */}
+                                {/* STEP 4: GAMEPLAY & MISSION DASHBOARD (DENGAN RULES CARA MAIN) */}
                                 {participantStep === 'GAMEPLAY' && (
                                     <div className="p-5 flex flex-col justify-between flex-1 space-y-4">
                                         <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
@@ -315,6 +300,24 @@
                                             <button onClick={() => setParticipantStep('SCANNER')} className="bg-red-600 hover:bg-red-500 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-lg shadow-red-600/20">
                                                 📷 SCAN QR
                                             </button>
+                                        </div>
+
+                                        {/* KARTU PANDUAN CARA MAIN (RULES) YANG BARU DITAMBAHKAN */}
+                                        <div className="bg-blue-600/10 border border-blue-500/30 rounded-2xl p-3.5 text-left space-y-2">
+                                            <div className="flex justify-between items-center cursor-pointer" onClick={() => setShowRulesInfo(!showRulesInfo)}>
+                                                <span className="text-xs font-black text-blue-400 flex items-center gap-1.5">
+                                                    📖 Panduan Cara Main (Klik untuk {showRulesInfo ? 'Tutup' : 'Buka'})
+                                                </span>
+                                                <span className="text-xs text-blue-400 font-bold">{showRulesInfo ? '▲' : '▼'}</span>
+                                            </div>
+                                            {showRulesInfo && (
+                                                <ol className="text-[11px] text-slate-300 space-y-1.5 list-decimal list-inside pt-1 border-t border-blue-500/20">
+                                                    <li><strong>Cari Pemain:</strong> Kelilingi Trans Studio Cibubur & scan QR di baju pemain untuk membuka lokasi wahana.</li>
+                                                    <li><strong>Ambil Clue:</strong> Datang ke wahana tersebut, scan QR Lokasi yang benar untuk dapat huruf kunci. *(Hati-hati QR pengecoh!)*</li>
+                                                    <li><strong>Kumpulkan 6 Huruf:</strong> Lengkapi ke-6 warna berbeda secara kolaborasi tim.</li>
+                                                    <li><strong>Final Investigation:</strong> Susun 5 huruf menjadi nama binatang & pilih warna Impostor!</li>
+                                                </ol>
+                                            )}
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-2.5">
@@ -344,7 +347,6 @@
                                     </div>
                                 )}
 
-                                {/* SCANNER SIMULATOR SCREEN */}
                                 {participantStep === 'SCANNER' && (
                                     <div className="p-5 flex flex-col justify-between flex-1 space-y-4">
                                         <div className="text-center space-y-1">
@@ -384,7 +386,6 @@
                                     </div>
                                 )}
 
-                                {/* STEP 5: FINAL INVESTIGATION */}
                                 {participantStep === 'FINAL' && (
                                     <div className="p-5 flex flex-col justify-between flex-1 space-y-4">
                                         <div className="text-center space-y-1">
@@ -416,12 +417,9 @@
                                     </div>
                                 )}
 
-                                {/* STEP 6: COMPLETED & FOOD VOUCHER */}
                                 {participantStep === 'COMPLETED' && (
                                     <div className="p-6 text-center space-y-5 my-auto">
-                                        <div className="w-20 h-20 bg-emerald-500/20 border-2 border-emerald-500 rounded-3xl mx-auto flex items-center justify-center text-3xl">
-                                            ✅
-                                        </div>
+                                        <div className="w-20 h-20 bg-emerald-500/20 border-2 border-emerald-500 rounded-3xl mx-auto flex items-center justify-center text-3xl">✅</div>
                                         <div className="space-y-2">
                                             <h1 className="text-xl font-black text-white">MISSION COMPLETED!</h1>
                                             <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">Jawaban final telah tersimpan real-time di server admin. Kupon makan Anda dan seluruh anggota tim kini aktif!</p>
@@ -440,9 +438,7 @@
                                         </div>
 
                                         <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 text-center space-y-4">
-                                            <div className="w-32 h-32 bg-white rounded-2xl mx-auto p-2 flex items-center justify-center font-mono font-black text-xs text-slate-900 border">
-                                                [QR VOUCHER]
-                                            </div>
+                                            <div className="w-32 h-32 bg-white rounded-2xl mx-auto p-2 flex items-center justify-center font-mono font-black text-xs text-slate-900 border">[QR VOUCHER]</div>
                                             <div>
                                                 <h4 className="font-black text-white text-sm">Peserta ({activeTeam.name})</h4>
                                                 <p className="text-[10px] text-slate-400 font-mono">Voucher ID: VCH-{activeTeam.id}-1</p>
@@ -460,7 +456,6 @@
 
                             </div>
                         ) : (
-                            /* DASHBOARD ADMIN REAL-TIME */
                             <div className="space-y-6">
                                 <div className="flex flex-wrap gap-2 bg-slate-900 p-2 rounded-2xl border border-slate-800">
                                     {['OVERVIEW', 'LEADERBOARD', 'MONITORING', 'LOGS'].map(tab => (
@@ -561,7 +556,6 @@
                         )}
                     </main>
 
-                    {/* MODAL HASIL SCAN */}
                     {scanResultModal && (
                         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl max-w-sm w-full text-center space-y-4 shadow-2xl">
@@ -591,7 +585,6 @@
                         </div>
                     )}
 
-                    {/* MODAL KONFIRMASI SUBMIT */}
                     {showConfirmSubmitModal && (
                         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl max-w-sm w-full text-center space-y-4 shadow-2xl">
