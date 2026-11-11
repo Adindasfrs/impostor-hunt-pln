@@ -18,7 +18,7 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        // --- KONFIGURASI GLOBAL 18 TIM & 18 PEMAIN ---
+        // --- KONFIGURASI GLOBAL 18 TIM & 18 WAHANA TSB (DENGAN KATEGORI EXTREME - M) ---
         const ANIMAL_KEYWORDS = ["TIKUS", "GAJAH", "BADAK", "SINGA", "PANDA", "ZEBRA", "ELANG", "SEMUT", "LEBAH", "KATAK", "MACAN", "CICAK", "BEBEK", "BELUT", "KODOK", "TAPIR", "LUWAK", "KANCIL"];
         
         const COLORS_CONFIG = [
@@ -30,11 +30,27 @@
             { id: 'ORANGE', name: 'ORANGE', hex: '#F97316' }
         ];
 
-        const LOCATIONS_DATA = Array.from({ length: 18 }, (_, i) => ({
-            code: `QR-LOC-${(i + 1).toString().padStart(2, '0')}`,
-            name: `Wahana TSB Zone ${(i + 1)} (Sky Rider / Area TSC)`,
-            locationId: `LOC-${(i + 1).toString().padStart(2, '0')}`
-        }));
+        // Daftar 18 Wahana Resmi Trans Studio Cibubur (-m adalah Extreme)
+        const LOCATIONS_DATA = [
+            { code: 'QR-LOC-01', locationId: 'LOC-01', name: '1. Science Center', isExtreme: false },
+            { code: 'QR-LOC-02', locationId: 'LOC-02', name: '2. Magical Ball', isExtreme: false },
+            { code: 'QR-LOC-03', locationId: 'LOC-03', name: '3. Snow Playground', isExtreme: false },
+            { code: 'QR-LOC-04', locationId: 'LOC-04', name: '4. Formula Kart', isExtreme: false },
+            { code: 'QR-LOC-05', locationId: 'LOC-05', name: '5. Wave Racer', isExtreme: false },
+            { code: 'QR-LOC-06', locationId: 'LOC-06', name: '6. Boomerang Coaster - m (EXTREME 🎢)', isExtreme: true },
+            { code: 'QR-LOC-07', locationId: 'LOC-07', name: '7. Pacific Rim', isExtreme: false },
+            { code: 'QR-LOC-08', locationId: 'LOC-08', name: '8. Magic Bike', isExtreme: false },
+            { code: 'QR-LOC-09', locationId: 'LOC-09', name: '9. Gravitron - m (EXTREME 🌀)', isExtreme: true },
+            { code: 'QR-LOC-10', locationId: 'LOC-10', name: '10. Rock in Tug', isExtreme: false },
+            { code: 'QR-LOC-11', locationId: 'LOC-11', name: '11. Carousel', isExtreme: false },
+            { code: 'QR-LOC-12', locationId: 'LOC-12', name: '12. Oriental Express', isExtreme: false },
+            { code: 'QR-LOC-13', locationId: 'LOC-13', name: '13. Tilting Village', isExtreme: false },
+            { code: 'QR-LOC-14', locationId: 'LOC-14', name: '14. Alien Taxi - m (EXTREME 🚕)', isExtreme: true },
+            { code: 'QR-LOC-15', locationId: 'LOC-15', name: '15. Bat Glider', isExtreme: false },
+            { code: 'QR-LOC-16', locationId: 'LOC-16', name: '16. Jurassic Island - m (EXTREME 🦖)', isExtreme: true },
+            { code: 'QR-LOC-17', locationId: 'LOC-17', name: '17. Monster Wars - m (EXTREME 👾)', isExtreme: true },
+            { code: 'QR-LOC-18', locationId: 'LOC-18', name: '18. Kingkong Tower', isExtreme: false }
+        ];
 
         const CORPORATE_SLOGANS = [
             "\"Kolaborasi hebat dimulai dari keberanian untuk saling percaya. Semangat!\"[cite: 3]",
@@ -52,6 +68,7 @@
 
         const generateInitialPlayers = (teams) => teams.map((team, idx) => {
             const colorObj = COLORS_CONFIG[idx % 6];
+            // Pastikan setiap tim mendapatkan kombinasi wahana (beberapa tim mendapatkan wahana -m Extreme)
             const loc = LOCATIONS_DATA[idx % LOCATIONS_DATA.length];
             return {
                 id: `QR-PLY-B1-${(idx + 1)}`,
@@ -60,7 +77,8 @@
                 colorId: colorObj.id,
                 locationId: loc.locationId,
                 locationName: loc.name,
-                locationCode: loc.code
+                locationCode: loc.code,
+                isExtreme: loc.isExtreme
             };
         });
 
@@ -117,7 +135,7 @@
                     return {
                         type: 'DECOY',
                         title: '⚠️ PETUNJUK SALAH!',
-                        desc: `${randomSlogan} Silakan ulangi lagi proses scan dari pemain dengan warna tersebut.`
+                        desc: `${randomSlogan} Silakan ulangi lagi proses scan dari pemain dengan warna tersebut[cite: 10].`
                     };
                 }
 
@@ -133,6 +151,7 @@
                         title: `PEMAIN ${matchedPlayer.colorId} DITEMUKAN!`,
                         color: matchedPlayer.colorId,
                         locationName: matchedPlayer.locationName,
+                        isExtreme: matchedPlayer.isExtreme,
                         locationCode: matchedPlayer.locationCode
                     };
                 }
@@ -274,19 +293,20 @@
                                                 <ul className="text-[11px] text-slate-300 space-y-1 list-disc list-inside">
                                                     <li><strong>07.30 WIB:</strong> Peserta berkumpul di Lobby 18 Office Park[cite: 9].</li>
                                                     <li><strong>08.00 - 08.15 WIB:</strong> Bus berangkat menuju Lobby TS Mall[cite: 9].</li>
+                                                    <li><strong>Aturan Wahana:</strong> Setiap tim wajib menaklukkan wahana yang ditentukan (termasuk wahana berlabel <strong>-m (Extreme)</strong> memacu adrenalin!).</li>
                                                     <li><strong>14.30 WIB:</strong> Batas akhir keluar area permainan menuju titik kepulangan[cite: 11].</li>
                                                     <li><strong>15.00 - 15.30 WIB:</strong> Bus pulang kembali ke Lobby 18 Office Park[cite: 11].</li>
                                                 </ul>
                                             </div>
 
                                             <div className="bg-blue-600/10 border border-blue-500/30 p-4 rounded-2xl text-left space-y-2">
-                                                <h3 className="font-black text-blue-400 text-xs uppercase tracking-wider">📖 Panduan 9 Langkah Permainan (Sesuai Komik)</h3>
+                                                <h3 className="font-black text-blue-400 text-xs uppercase tracking-wider">📖 Panduan 9 Langkah Permainan</h3>
                                                 <ol className="text-[11px] text-slate-300 space-y-1.5 list-decimal list-inside">
                                                     <li><strong>Cari Pemain:</strong> Temukan pemain ber-QR dengan warna tertentu[cite: 9].</li>
-                                                    <li><strong>Scan QR Pemain:</strong> Dapatkan informasi wahana tujuan (misal: Sky Rider)[cite: 9].</li>
+                                                    <li><strong>Scan QR Pemain:</strong> Dapatkan informasi wahana tujuan (bisa berupa wahana Reguler atau Extreme `-m`)[cite: 9].</li>
                                                     <li><strong>Menuju Wahana:</strong> Segera menuju wahana yang ditunjuk[cite: 10].</li>
                                                     <li><strong>Mainkan Wahana:</strong> Nikmati aktivitas/permainan di wahana tersebut[cite: 10].</li>
-                                                    <li><strong>Cari & Scan QR Petunjuk:</strong> Ambil huruf petunjuk. Jika salah, ulangi scan pemain[cite: 10].</li>
+                                                    <li><strong>Cari & Scan QR Petunjuk:</strong> Ambil huruf petunjuk di area wahana[cite: 10].</li>
                                                     <li><strong>Kumpulkan Semua Huruf:</strong> Lengkapi 6 huruf dari 6 warna berbeda[cite: 11].</li>
                                                     <li><strong>Tulis Jawaban:</strong> Masukkan kata kunci 5 huruf & pilih warna Impostor[cite: 11].</li>
                                                     <li><strong>Aktivasi Voucher Makan:</strong> Tukarkan voucher di titik penukaran konsumsi[cite: 11].</li>
@@ -319,7 +339,7 @@
 
                                         {showComicGuide && (
                                             <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
-                                                <p>1. Cari Pemain ➔ 2. Scan QR Pemain ➔ 3. Ke Wahana ➔ 4. Mainkan Wahana ➔ 5. Scan QR Petunjuk ➔ 6. Kumpul 6 Huruf ➔ 7. Submit Jawaban ➔ 8. Ambil Voucher Makan ➔ 9. Pulang[cite: 9, 10, 11].</p>
+                                                <p>1. Cari Pemain ➔ 2. Scan QR Pemain (Wajib ke Wahana -m Extreme/Reguler) ➔ 3. Mainkan Wahana ➔ 4. Scan QR Petunjuk ➔ 5. Kumpul 6 Huruf ➔ 6. Submit Jawaban ➔ 7. Voucher Makan[cite: 9, 10, 11].</p>
                                             </div>
                                         )}
 
@@ -381,10 +401,10 @@
                                                 ))}
                                             </div>
 
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase block mt-2">2. Scan QR Lokasi Wahana (Langkah 3, 4 & 5):</span>
-                                            <div className="grid grid-cols-2 gap-1.5">
-                                                {LOCATIONS_DATA.slice(0, 6).map(loc => (
-                                                    <button key={loc.code} onClick={() => { const res = processQrScanToken(loc.code); setScanResultModal(res); }} className="p-2 bg-slate-900 hover:bg-slate-800 rounded-xl border border-slate-700 text-[10px] font-bold text-slate-300 text-left truncate">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase block mt-2">2. Scan QR Lokasi Wahana TSB (Termasuk -m Extreme):</span>
+                                            <div className="grid grid-cols-2 gap-1.5 max-h-32 overflow-y-auto">
+                                                {LOCATIONS_DATA.map(loc => (
+                                                    <button key={loc.code} onClick={() => { const res = processQrScanToken(loc.code); setScanResultModal(res); }} className={`p-2 rounded-xl border text-[10px] font-bold text-left truncate ${loc.isExtreme ? 'bg-red-950/40 border-red-500/50 text-red-300' : 'bg-slate-900 border-slate-700 text-slate-300'}`}>
                                                         {loc.name}
                                                     </button>
                                                 ))}
@@ -576,14 +596,14 @@
                         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl max-w-sm w-full text-center space-y-4 shadow-2xl">
                                 <div className="w-16 h-16 bg-blue-600/20 rounded-full mx-auto flex items-center justify-center text-xl">
-                                    {scanResultModal.type === 'DECOY' ? '❌' : scanResultModal.type === 'PLAYER' ? '🎢' : '📱'}
+                                    {scanResultModal.type === 'DECOY' ? '❌' : scanResultModal.type === 'PLAYER' ? (scanResultModal.isExtreme ? '🔥' : '🎢') : '📱'}
                                 </div>
                                 <h3 className="text-lg font-black text-white">{scanResultModal.title}</h3>
                                 {scanResultModal.type === 'PLAYER' && (
                                     <div className="space-y-2">
                                         <p className="text-xs text-slate-300">Informasi ditemukan[cite: 9]! Segera menuju wahana tujuan[cite: 10]:</p>
-                                        <div className="bg-slate-950 p-3 rounded-xl border border-blue-500/40 text-blue-400 font-black text-xs">
-                                            🎯 {scanResultModal.locationName}
+                                        <div className={`p-3 rounded-xl border font-black text-xs ${scanResultModal.isExtreme ? 'bg-red-950/60 border-red-500 text-red-300' : 'bg-slate-950 border-blue-500/40 text-blue-400'}`}>
+                                            {scanResultModal.isExtreme ? '🔥 TANTANGAN EXTREME (-m): ' : '🎯 '} {scanResultModal.locationName}
                                         </div>
                                     </div>
                                 )}
