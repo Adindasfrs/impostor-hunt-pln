@@ -289,7 +289,6 @@
                                     </div>
                                 )}
 
-                                {/* STEP 4: GAMEPLAY & MISSION DASHBOARD (DENGAN RULES CARA MAIN) */}
                                 {participantStep === 'GAMEPLAY' && (
                                     <div className="p-5 flex flex-col justify-between flex-1 space-y-4">
                                         <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
@@ -302,7 +301,6 @@
                                             </button>
                                         </div>
 
-                                        {/* KARTU PANDUAN CARA MAIN (RULES) YANG BARU DITAMBAHKAN */}
                                         <div className="bg-blue-600/10 border border-blue-500/30 rounded-2xl p-3.5 text-left space-y-2">
                                             <div className="flex justify-between items-center cursor-pointer" onClick={() => setShowRulesInfo(!showRulesInfo)}>
                                                 <span className="text-xs font-black text-blue-400 flex items-center gap-1.5">
@@ -313,9 +311,9 @@
                                             {showRulesInfo && (
                                                 <ol className="text-[11px] text-slate-300 space-y-1.5 list-decimal list-inside pt-1 border-t border-blue-500/20">
                                                     <li><strong>Cari Pemain:</strong> Kelilingi Trans Studio Cibubur & scan QR di baju pemain untuk membuka lokasi wahana.</li>
-                                                    <li><strong>Ambil Clue:</strong> Datang ke wahana tersebut, scan QR Lokasi yang benar untuk dapat huruf kunci. *(Hati-hati QR pengecoh!)*</li>
-                                                    <li><strong>Kumpulkan 6 Huruf:</strong> Lengkapi ke-6 warna berbeda secara kolaborasi tim.</li>
-                                                    <li><strong>Final Investigation:</strong> Susun 5 huruf menjadi nama binatang & pilih warna Impostor!</li>
+                                                    <li><strong>Wajib ke Wahana:</strong> Setelah discan, Anda <strong>wajib menuju ke wahana tersebut dan bermain</strong> di wahana itu.</li>
+                                                    <li><strong>Ambil Clue:</strong> Scan QR Lokasi yang benar di wahana untuk dapat huruf kunci. *(Hati-hati QR pengecoh!)*</li>
+                                                    <li><strong>Final Investigation:</strong> Kumpulkan 6 huruf, susun jadi nama binatang & pilih warna Impostor!</li>
                                                 </ol>
                                             )}
                                         </div>
@@ -347,40 +345,56 @@
                                     </div>
                                 )}
 
+                                {/* SCANNER CAMERA VIEWFINDER INTERAKTIF */}
                                 {participantStep === 'SCANNER' && (
-                                    <div className="p-5 flex flex-col justify-between flex-1 space-y-4">
-                                        <div className="text-center space-y-1">
-                                            <h3 className="text-base font-black text-white">SIMULASI SCANNER KAMERA</h3>
-                                            <p className="text-xs text-slate-400">Pilih QR di bawah untuk simulasi pemindaian di Trans Studio Cibubur</p>
+                                    <div className="p-4 flex flex-col justify-between flex-1 space-y-3">
+                                        <div className="text-center space-y-0.5">
+                                            <h3 className="text-sm font-black text-white">SCANNER KAMERA UTAMA</h3>
+                                            <p className="text-[11px] text-slate-400">Arahkan kamera ke QR di baju pemain atau lokasi wahana TSC</p>
                                         </div>
 
-                                        <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3 overflow-y-auto max-h-80">
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase block">1. Scan QR Baju Pemain:</span>
-                                            <div className="grid grid-cols-3 gap-2">
+                                        {/* KOTAK KAMERA / VIEWFINDER INTERAKTIF */}
+                                        <div className="relative w-full h-48 bg-slate-950 rounded-2xl border-2 border-red-500/50 overflow-hidden flex flex-col items-center justify-center shadow-inner">
+                                            {/* Simulasi tampilan kamera belakang */}
+                                            <div className="absolute inset-0 bg-gradient-to-b from-slate-900/40 via-slate-950/80 to-slate-900/60 flex items-center justify-center">
+                                                <div className="w-36 h-36 border-2 border-dashed border-red-500/80 rounded-xl relative flex items-center justify-center animate-pulse">
+                                                    <span className="text-[10px] font-mono text-red-400 bg-slate-950/80 px-2 py-0.5 rounded">Fokuskan QR Code</span>
+                                                    {/* Garis laser scanner bergerak */}
+                                                    <div className="absolute w-full h-0.5 bg-red-500 shadow-[0_0_10px_#ef4444] top-1/2 animate-bounce"></div>
+                                                </div>
+                                            </div>
+                                            <div className="absolute bottom-2 right-2 bg-slate-900/80 backdrop-blur px-2 py-1 rounded text-[9px] text-slate-300 font-mono">
+                                                📷 Camera Active (Rear)
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-2 overflow-y-auto max-h-52">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase block">1. Scan QR Baju Pemain (Target Utama):</span>
+                                            <div className="grid grid-cols-3 gap-1.5">
                                                 {players.filter(p => p.teamId === activeTeam.id).map(pl => (
-                                                    <button key={pl.id} onClick={() => { const res = processQrScanToken(pl.id); setScanResultModal(res); }} className="p-2.5 bg-slate-900 hover:bg-slate-800 rounded-xl border border-slate-700 text-xs font-bold text-white flex flex-col items-center gap-1">
-                                                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS_CONFIG.find(c => c.id === pl.colorId)?.hex }}></span>
+                                                    <button key={pl.id} onClick={() => { const res = processQrScanToken(pl.id); setScanResultModal(res); }} className="p-2 bg-slate-900 hover:bg-slate-800 rounded-xl border border-slate-700 text-xs font-bold text-white flex flex-col items-center gap-1">
+                                                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS_CONFIG.find(c => c.id === pl.colorId)?.hex }}></span>
                                                         {pl.colorId}
                                                     </button>
                                                 ))}
                                             </div>
 
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase block mt-3">2. Scan QR Lokasi Wahana (Benar):</span>
-                                            <div className="grid grid-cols-2 gap-2">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase block mt-2">2. Scan QR Lokasi Wahana (Setelah Main di Wahana):</span>
+                                            <div className="grid grid-cols-2 gap-1.5">
                                                 {LOCATIONS_DATA.slice(0, 6).map(loc => (
-                                                    <button key={loc.code} onClick={() => { const res = processQrScanToken(loc.code); setScanResultModal(res); }} className="p-2 bg-slate-900 hover:bg-slate-800 rounded-xl border border-slate-700 text-[10px] font-bold text-slate-300">
+                                                    <button key={loc.code} onClick={() => { const res = processQrScanToken(loc.code); setScanResultModal(res); }} className="p-2 bg-slate-900 hover:bg-slate-800 rounded-xl border border-slate-700 text-[10px] font-bold text-slate-300 text-left truncate">
                                                         {loc.name}
                                                     </button>
                                                 ))}
                                             </div>
 
-                                            <span className="text-[10px] font-bold text-orange-400 uppercase block mt-3">3. Coba Scan QR Pengecoh (Decoy):</span>
-                                            <button onClick={() => { const res = processQrScanToken('DECOY', true); setScanResultModal(res); }} className="w-full p-2.5 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/40 rounded-xl text-xs font-bold text-orange-300">
+                                            <span className="text-[10px] font-bold text-orange-400 uppercase block mt-2">3. Simulasi QR Pengecoh (Decoy):</span>
+                                            <button onClick={() => { const res = processQrScanToken('DECOY', true); setScanResultModal(res); }} className="w-full p-2 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/40 rounded-xl text-xs font-bold text-orange-300">
                                                 ⚠️ Scan QR Pengecoh Wahana
                                             </button>
                                         </div>
 
-                                        <button onClick={() => setParticipantStep('GAMEPLAY')} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl text-xs">
+                                        <button onClick={() => setParticipantStep('GAMEPLAY')} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2.5 rounded-xl text-xs">
                                             Kembali ke Dashboard Misi
                                         </button>
                                     </div>
@@ -556,15 +570,21 @@
                         )}
                     </main>
 
+                    {/* MODAL HASIL SCAN DENGAN INSTRUKSI WAJIB KE WAHANA */}
                     {scanResultModal && (
                         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                             <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl max-w-sm w-full text-center space-y-4 shadow-2xl">
                                 <div className="w-16 h-16 bg-blue-600/20 rounded-full mx-auto flex items-center justify-center text-xl">
-                                    {scanResultModal.type === 'DECOY' ? '⚠️' : '📱'}
+                                    {scanResultModal.type === 'DECOY' ? '⚠️' : scanResultModal.type === 'PLAYER' ? '🎢' : '📱'}
                                 </div>
                                 <h3 className="text-lg font-black text-white">{scanResultModal.title}</h3>
                                 {scanResultModal.type === 'PLAYER' && (
-                                    <p className="text-xs text-slate-300">Segera menuju lokasi wahana: <strong className="text-white block mt-1">{scanResultModal.locationName}</strong></p>
+                                    <div className="space-y-2">
+                                        <p className="text-xs text-slate-300">Pemain berhasil ditemukan! Anda <strong>wajib segera menuju ke wahana</strong> berikut dan bermain di wahana tersebut:</p>
+                                        <div className="bg-slate-950 p-3 rounded-xl border border-blue-500/40 text-blue-400 font-black text-xs">
+                                            📍 {scanResultModal.locationName}
+                                        </div>
+                                    </div>
                                 )}
                                 {scanResultModal.type === 'CLUE' && (
                                     <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
@@ -579,7 +599,7 @@
                                     <p className="text-xs text-red-400">{scanResultModal.desc}</p>
                                 )}
                                 <button onClick={() => setScanResultModal(null)} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-3 rounded-xl text-xs">
-                                    MENGERTI / TUTUP
+                                    MENGERTI / LANJUT BERBURU
                                 </button>
                             </div>
                         </div>
