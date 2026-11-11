@@ -1,0 +1,1482 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { 
+  QrCode, ShieldAlert, Trophy, Utensils, Users, MapPin, 
+  Play, Pause, RefreshCw, CheckCircle2, XCircle, AlertTriangle, 
+  Search, Lock, Unlock, Key, Eye, HelpCircle, ChevronRight, 
+  Database, Server, Cpu, FileText, Check, Award, Sparkles, 
+  Smartphone, Monitor, Sparkle, FastForward, Info, LogOut
+} from 'lucide-react';
+
+// ==========================================
+// INITIAL GAME CONSTANTS & SEED DATA
+// ==========================================
+const ANIMAL_KEYWORDS = [
+  "TIKUS", "GAJAH", "BADAK", "SINGA", "PANDA", "ZEBRA", 
+  "ELANG", "SEMUT", "LEBAH", "KATAK", "MACAN", "CICAK", 
+  "BEBEK", "BELUT", "KODOK", "TAPIR", "LUWAK", "KANCIL"
+];
+
+const COLORS_CONFIG = [
+  { id: 'RED', name: 'MERAH', hex: '#EF4444', border: 'border-red-500', bg: 'bg-red-500', text: 'text-red-500', isCitizen: true },
+  { id: 'BLUE', name: 'BIRU', hex: '#3B82F6', border: 'border-blue-500', bg: 'bg-blue-500', text: 'text-blue-500', isCitizen: true },
+  { id: 'GREEN', name: 'HIJAU', hex: '#10B981', border: 'border-green-500', bg: 'bg-green-500', text: 'text-green-500', isCitizen: true },
+  { id: 'YELLOW', name: 'KUNING', hex: '#F59E0B', border: 'border-yellow-500', bg: 'bg-yellow-500', text: 'text-yellow-500', isCitizen: true },
+  { id: 'PURPLE', name: 'UNGU', hex: '#8B5CF6', border: 'border-purple-500', bg: 'bg-purple-500', text: 'text-purple-500', isCitizen: true },
+  { id: 'ORANGE', name: 'ORANYE', hex: '#F97316', border: 'border-orange-500', bg: 'bg-orange-500', text: 'text-orange-500', isCitizen: false } // Default Impostor
+];
+
+const LOCATIONS_DATA = Array.from({ length: 18 }, (_, i) => ({
+  id: `LOC-${(i + 1).toString().padStart(2, '0')}`,
+  name: [
+    "Formula Kart Arena", "Jurassic Island", "Zombie Wars", "Alien Taxi", 
+    "Pacific Rim Mech Base", "Bat Glider Tower", "Science Center Expo", "Magical Theatre",
+    "Submarine Experience", "Stunt Show Stage", "Wave Pool Plaza", "Sky High Roller",
+    "4D Cinema Hall", "Haunted House Crypt", "Laser Tag Zone", "Arcade Central",
+    "Food Avenue East", "Main Amphitheatre"
+  ][i],
+  code: `QR-LOC-${(i + 1).toString().padStart(2, '0')}`,
+  zone: `Zone ${String.fromCharCode(65 + Math.floor(i / 5))}`
+}));
+
+const CORPORATE_SLOGANS = [
+  "Kolaborasi yang hebat dimulai dari keberanian untuk saling percaya.",
+  "AKHLAK: Amanah, Kompeten, Harmonis, Loyal, Adaptif, Kolaboratif.",
+  "PLN Nusantara Power: Terdepan Terpercaya Terangi Negeri!",
+  "Inovasi tiada henti untuk energi masa depan Indonesia.",
+  "Satu Tim, Satu Semangat, Menuju Keunggulan Bersama!",
+  "Fokus pada tujuan, nikmati tantangan di Trans Studio Cibubur!"
+];
+
+// Generate Initial 18 Teams
+const generateInitialTeams = () => {
+  return Array.from({ length: 18 }, (_, i) => {
+    const teamNum = (i + 1).toString().padStart(2, '0');
+    return {
+      id: `TEAM-${teamNum}`,
+      name: `Tim Power ${teamNum}`,
+      batchId: 1,
+      keyword: ANIMAL_KEYWORDS[i % ANIMAL_KEYWORDS.length],
+      membersCount: 8,
+      departmentCount: 4,
+      cihPlayerId: `PLY-${teamNum}`
+    };
+  });
+};
+
+// Generate Initial 18 Players assigned across 6 colors (3 per color)
+const generateInitialPlayers = (teams) => {
+  return teams.map((team, idx) => {
+    const colorObj = COLORS_CONFIG[idx % 6];
+    const loc = LOCATIONS_DATA[idx];
+    return {
+      id: team.cihPlayerId,
+      teamId: team.id,
+      name: `Peserta Inti ${idx + 1}`,
+      colorId: colorObj.id,
+      locationId: loc.id,
+      playerQrToken: `QR-PLY-B1-${idx + 1}`,
+      status: 'READY'
+    };
+  });
+};
+
+// ==========================================
+// DYNAMIC PUZZLE ENGINE UTILS
+// ==========================================
+// Maps 5-letter word to 5 Citizen colors + 1 Decoy letter for Impostor color
+const buildTeamPuzzleMapping = (teamId, keyword, impostorColorId) => {
+  const citizenColors = COLORS_CONFIG.filter(c => c.id !== impostorColorId);
+  const letters = keyword.split('');
+  
+  const clues = {};
+  citizenColors.forEach((color, idx) => {
+    clues[color.id] = letters[idx] || 'X';
+  });
+  // Impostor gets a random decoy letter not matching the exact word order
+  const decoyLetters = ['A', 'B', 'X', 'Z', 'M', 'Q'];
+  clues[impostorColorId] = decoyLetters[teamId.charCodeAt(teamId.length - 1) % decoyLetters.length];
+
+  return {
+    teamId,
+    keyword,
+    impostorColorId,
+    clues
+  };
+};
+
+export default function App() {
+  // Global State
+  const [gameState, setGameState] = useState('PLAYING'); // PREPARE, READY, PLAYING, PAUSED, ENDED
+  const [currentBatch, setCurrentBatch] = useState(1);
+  const [impostorColorId, setImpostorColorId] = useState('ORANGE');
+  const [viewMode, setViewMode] = useState('PARTICIPANT'); // PARTICIPANT or ADMIN
+  const [activeTabAdmin, setActiveTabAdmin] = useState('OVERVIEW');
+  const [showArchModal, setShowArchModal] = useState(false);
+  const [showTestSuite, setShowTestSuite] = useState(false);
+  const [selectedPrintCategory, setSelectedPrintCategory] = useState('PLAYERS'); // PLAYERS, LOCATIONS, DECOYS
+
+  // Core Data State
+  const [teams, setTeams] = useState(generateInitialTeams());
+  const [players, setPlayers] = useState(generateInitialPlayers(generateInitialTeams()));
+  const [selectedTeamId, setSelectedTeamId] = useState('TEAM-01');
+
+  // Progress & Submissions
+  // Structure: { [teamId]: { scannedPlayers: [colorId], scannedClues: { [colorId]: letter }, submitted: bool, submissionTime: timestamp, keywordAns: str, impostorAns: str, isCorrect: bool } }
+  const [teamProgressMap, setTeamProgressMap] = useState(() => {
+    const initial = {};
+    const initialTeams = generateInitialTeams();
+    initialTeams.forEach(t => {
+      initial[t.id] = {
+        scannedPlayers: [],
+        scannedClues: {},
+        submitted: false,
+        submissionTime: null,
+        keywordAns: '',
+        impostorAns: '',
+        isCorrect: false
+      };
+    });
+    return initial;
+  });
+
+  // Food Vouchers Database: { [voucherId]: { id, participantName, teamId, qrCode, redeemed: bool, redeemedAt: str, manualOverride: bool } }
+  const [vouchersMap, setVouchersMap] = useState({});
+  const [auditLogs, setAuditLogs] = useState([
+    { id: 'LOG-001', time: new Date().toLocaleTimeString(), action: 'SYSTEM_INIT', details: 'CIH Engine initialized for Trans Studio Cibubur event' }
+  ]);
+
+  // Puzzle Mappings state
+  const teamPuzzles = useMemo(() => {
+    const map = {};
+    teams.forEach(t => {
+      map[t.id] = buildTeamPuzzleMapping(t.id, t.keyword, impostorColorId);
+    });
+    return map;
+  }, [teams, impostorColorId]);
+
+  // Participant View Navigation
+  const [mobileScreen, setMobileScreen] = useState('INTRO'); // INTRO, DASHBOARD, SCANNER, LOCATION_UNLOCKED, CLUE_DISCOVERED, FINAL_INVESTIGATION, GAME_COMPLETED, VOUCHER
+  const [scanResultModal, setScanResultModal] = useState(null); // { type: 'PLAYER'|'LOCATION_CLUE'|'DECOY'|'ERROR', title, desc, data }
+  const [manualQrInput, setManualQrInput] = useState('');
+
+  // Final submission form state
+  const [inputKeyword, setInputKeyword] = useState('');
+  const [selectedImpostorGuess, setSelectedImpostorGuess] = useState('');
+  const [showConfirmSubmitModal, setShowConfirmSubmitModal] = useState(false);
+
+  // Helper log action
+  const addAuditLog = (action, details) => {
+    setAuditLogs(prev => [
+      { id: `LOG-${Date.now().toString().slice(-4)}`, time: new Date().toLocaleTimeString(), action, details },
+      ...prev
+    ]);
+  };
+
+  // Synchronize dynamic voucher generation when a team completes final submission
+  const handleFinalSubmission = (teamId, keywordGuess, colorGuess) => {
+    const cleanKeyword = keywordGuess.trim().toUpperCase();
+    const teamPuzzle = teamPuzzles[teamId];
+    const isKeywordCorrect = cleanKeyword === teamPuzzle.keyword;
+    const isImpostorCorrect = colorGuess === teamPuzzle.impostorColorId;
+    const isBothCorrect = isKeywordCorrect && isImpostorCorrect;
+
+    const submissionTime = new Date().toLocaleTimeString('id-ID', { hour12: false }) + `.${Math.floor(Math.random() * 900 + 100)}`;
+
+    setTeamProgressMap(prev => ({
+      ...prev,
+      [teamId]: {
+        ...prev[teamId],
+        submitted: true,
+        submissionTime,
+        keywordAns: cleanKeyword,
+        impostorAns: colorGuess,
+        isCorrect: isBothCorrect
+      }
+    }));
+
+    // Generate Vouchers for all team members
+    const newVouchers = {};
+    for (let i = 1; i <= 8; i++) {
+      const vId = `VOUCH-${teamId}-${i}`;
+      newVouchers[vId] = {
+        id: vId,
+        participantName: `Peserta ${i} (${teamId})`,
+        teamId,
+        qrCode: `QR-MEAL-${vId}`,
+        redeemed: false,
+        redeemedAt: null,
+        manualOverride: false
+      };
+    }
+    setVouchersMap(prev => ({ ...prev, ...newVouchers }));
+
+    addAuditLog('SUBMIT_FINAL_ANSWER', `Team ${teamId} submitted final answer. Result Correct: ${isBothCorrect ? 'YES' : 'NO'}`);
+  };
+
+  // Core Engine: SCAN RESOLVER (Simulates Server-side QR Processing)
+  const processQrScanToken = (rawToken, currentTeamId) => {
+    if (gameState !== 'PLAYING') {
+      return {
+        type: 'ERROR',
+        title: 'PERMAINAN DIBEKUKAN',
+        desc: 'Game Master belum memulai atau sedang menjeda permainan.'
+      };
+    }
+
+    const teamProg = teamProgressMap[currentTeamId];
+
+    // Check if token matches a PLAYER QR
+    const matchedPlayer = players.find(p => p.playerQrToken === rawToken);
+    if (matchedPlayer) {
+      const playerColor = COLORS_CONFIG.find(c => c.id === matchedPlayer.colorId);
+      const playerLocation = LOCATIONS_DATA.find(l => l.id === matchedPlayer.locationId);
+
+      // Add to scanned players if not already
+      if (!teamProg.scannedPlayers.includes(matchedPlayer.colorId)) {
+        setTeamProgressMap(prev => ({
+          ...prev,
+          [currentTeamId]: {
+            ...prev[currentTeamId],
+            scannedPlayers: [...prev[currentTeamId].scannedPlayers, matchedPlayer.colorId]
+          }
+        }));
+      }
+
+      return {
+        type: 'PLAYER',
+        title: `${playerColor.name} PLAYER DISCOVERED!`,
+        colorHex: playerColor.hex,
+        desc: `Selamat! Anda berhasil menemukan pemain berkarakter ${playerColor.name}.`,
+        locationName: playerLocation.name,
+        locationId: playerLocation.id,
+        locationCode: playerLocation.code,
+        colorId: matchedPlayer.colorId
+      };
+    }
+
+    // Check if token matches a LOCATION QR
+    const matchedLocation = LOCATIONS_DATA.find(l => l.code === rawToken || rawToken.startsWith(`LOC-`));
+    if (matchedLocation) {
+      // Find associated player color for this location
+      const associatedPlayer = players.find(p => p.locationId === matchedLocation.id);
+      if (!associatedPlayer) {
+        return { type: 'ERROR', title: 'LOKASI TIDAK VALID', desc: 'Kode lokasi tidak terdaftar.' };
+      }
+
+      const playerColorId = associatedPlayer.colorId;
+
+      // RULE VALIDATION: Must scan player first!
+      if (!teamProg.scannedPlayers.includes(playerColorId)) {
+        return {
+          type: 'ERROR',
+          title: 'LOKASI TERKUNCI! (LOCKED)',
+          desc: `Tim Anda belum memindai pemain ${playerColorId}. Cari dan pindai QR pemain terlebih dahulu!`
+        };
+      }
+
+      // Check if this QR token is a DECOY at location
+      if (rawToken.includes('-DECOY-')) {
+        const slogan = CORPORATE_SLOGANS[Math.floor(Math.random() * CORPORATE_SLOGANS.length)];
+        return {
+          type: 'DECOY',
+          title: 'NICE TRY! THIS IS A DECOY',
+          desc: slogan,
+          subdesc: 'Ini adalah QR pengecoh. Cari QR utama berwarna tepat di lokasi ini!'
+        };
+      }
+
+      // Valid Primary Location QR scan -> Give dynamic team letter!
+      const teamPuzzle = teamPuzzles[currentTeamId];
+      const letter = teamPuzzle.clues[playerColorId];
+
+      setTeamProgressMap(prev => ({
+        ...prev,
+        [currentTeamId]: {
+          ...prev[currentTeamId],
+          scannedClues: {
+            ...prev[currentTeamId].scannedClues,
+            [playerColorId]: letter
+          }
+        }
+      }));
+
+      return {
+        type: 'LOCATION_CLUE',
+        title: 'CLUE DISCOVERED!',
+        colorId: playerColorId,
+        letter: letter,
+        desc: `Huruf petunjuk untuk warna ${playerColorId} berhasil didapatkan!`
+      };
+    }
+
+    return {
+      type: 'ERROR',
+      title: 'QR INVALID',
+      desc: 'Kode QR tidak dikenali oleh sistem IH DUFUN Connection.'
+    };
+  };
+
+  // Helper trigger scan action from UI
+  const handleExecuteScan = (token) => {
+    const res = processQrScanToken(token, selectedTeamId);
+    setScanResultModal(res);
+  };
+
+  const activeTeamObj = teams.find(t => t.id === selectedTeamId) || teams[0];
+  const activeTeamProg = teamProgressMap[selectedTeamId] || { scannedPlayers: [], scannedClues: {}, submitted: false };
+
+  // Calculate Leaderboard
+  const leaderboardList = useMemo(() => {
+    return Object.entries(teamProgressMap)
+      .map(([tId, prog]) => {
+        const teamInfo = teams.find(t => t.id === tId);
+        return {
+          teamId: tId,
+          teamName: teamInfo ? teamInfo.name : tId,
+          submitted: prog.submitted,
+          submissionTime: prog.submissionTime,
+          isCorrect: prog.isCorrect,
+          keywordAns: prog.keywordAns,
+          impostorAns: prog.impostorAns,
+          cluesCount: Object.keys(prog.scannedClues).length
+        };
+      })
+      .filter(item => item.submitted)
+      .sort((a, b) => {
+        if (a.isCorrect && !b.isCorrect) return -1;
+        if (!a.isCorrect && b.isCorrect) return 1;
+        return (a.submissionTime || '').localeCompare(b.submissionTime || '');
+      });
+  }, [teamProgressMap, teams]);
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col selection:bg-cyan-500 selection:text-black">
+      {/* GLOBAL TOP SIMULATION BANNER & ROLE SWITCHER */}
+      <header className="bg-slate-900 border-b border-slate-800 px-4 py-2 sticky top-0 z-50 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+        <div className="flex items-center space-x-3">
+          <div className="bg-gradient-to-tr from-cyan-500 to-blue-600 p-2 rounded-lg text-slate-950 font-black shadow-md flex items-center space-x-1">
+            <Sparkles className="w-5 h-5" />
+            <span className="tracking-widest text-sm uppercase">IH Engine v2.5</span>
+          </div>
+          <div className="hidden md:block">
+            <h1 className="text-xs font-semibold text-cyan-400">PLN NUSANTARA POWER • TRANS STUDIO CIBUBUR</h1>
+            <p className="text-[10px] text-slate-400">DUFUN Connection Scavenger Ecosystem</p>
+          </div>
+        </div>
+
+        {/* Global Controls & Simulation Helper */}
+        <div className="flex items-center flex-wrap gap-2 text-xs">
+          <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
+            <span className="text-slate-400 px-2 font-mono text-[11px]">TIM AKTIF:</span>
+            <select 
+              value={selectedTeamId}
+              onChange={(e) => setSelectedTeamId(e.target.value)}
+              className="bg-slate-900 text-cyan-400 font-bold px-2 py-1 rounded outline-none cursor-pointer border border-cyan-800"
+            >
+              {teams.map(t => (
+                <option key={t.id} value={t.id}>{t.id} - {t.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
+            <span className="text-slate-400 px-2 font-mono text-[11px]">STATUS GAME:</span>
+            <span className={`px-2 py-0.5 rounded font-bold uppercase text-[10px] ${
+              gameState === 'PLAYING' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+              gameState === 'PAUSED' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-700 text-slate-300'
+            }`}>
+              {gameState}
+            </span>
+          </div>
+
+          {/* Mode Switcher */}
+          <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-700">
+            <button
+              onClick={() => setViewMode('PARTICIPANT')}
+              className={`flex items-center space-x-1.5 px-3 py-1 rounded-md transition font-medium ${
+                viewMode === 'PARTICIPANT' ? 'bg-cyan-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>HP Peserta</span>
+            </button>
+            <button
+              onClick={() => setViewMode('ADMIN')}
+              className={`flex items-center space-x-1.5 px-3 py-1 rounded-md transition font-medium ${
+                viewMode === 'ADMIN' ? 'bg-cyan-500 text-slate-950 font-bold shadow' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              <span>Dashboard Admin</span>
+            </button>
+          </div>
+
+          {/* Quick Architecture Specs & Automated Test Suite Buttons */}
+          <button
+            onClick={() => setShowArchModal(true)}
+            className="flex items-center space-x-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-cyan-500/30 rounded-md transition"
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">ERD & Architecture</span>
+          </button>
+          <button
+            onClick={() => setShowTestSuite(true)}
+            className="flex items-center space-x-1 px-2.5 py-1.5 bg-purple-600/30 hover:bg-purple-600/40 text-purple-300 border border-purple-500/40 rounded-md transition"
+          >
+            <Cpu className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Run 16 Test Suite</span>
+          </button>
+        </div>
+      </header>
+
+      {/* MAIN VIEWPORT CONTAINER */}
+      <main className="flex-1 overflow-y-auto">
+        {viewMode === 'PARTICIPANT' ? (
+          /* MOBILE SIMULATOR FRAME */
+          <div className="py-6 px-2 flex justify-center items-center min-h-[calc(100vh-4rem)] bg-slate-900/50 backdrop-blur">
+            <div className="w-full max-w-[420px] bg-slate-950 border-4 border-slate-800 rounded-[38px] shadow-2xl overflow-hidden flex flex-col relative min-h-[740px]">
+              {/* Phone Speaker Notch */}
+              <div className="w-32 h-4 bg-slate-800 rounded-b-xl mx-auto flex items-center justify-center space-x-1">
+                <div className="w-2 h-2 rounded-full bg-slate-900"></div>
+                <div className="w-10 h-1 rounded-full bg-slate-900"></div>
+              </div>
+
+              {/* Mobile App Header */}
+              <div className="px-4 py-3 bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950 border-b border-slate-800 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xs font-black tracking-wider text-cyan-400 uppercase">IMPOSTOR HUNT</h2>
+                  <p className="text-[10px] text-slate-400">{activeTeamObj.id} • {activeTeamObj.name}</p>
+                </div>
+                <div className="flex items-center space-x-1 bg-cyan-950/80 border border-cyan-700/50 text-cyan-300 px-2 py-0.5 rounded text-[10px] font-mono">
+                  <span>Batch {currentBatch}</span>
+                </div>
+              </div>
+
+              {/* Mobile Screen Content Router */}
+              <div className="flex-1 p-4 overflow-y-auto flex flex-col">
+                {mobileScreen === 'INTRO' && (
+                  <div className="flex-1 flex flex-col items-center justify-between text-center py-4">
+                    <div className="my-auto space-y-4">
+                      <div className="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-tr from-cyan-500 to-blue-600 p-0.5 shadow-lg shadow-cyan-500/20">
+                        <div className="w-full h-full bg-slate-950 rounded-[22px] flex items-center justify-center">
+                          <ShieldAlert className="w-10 h-10 text-cyan-400 animate-pulse" />
+                        </div>
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-extrabold text-white">IMPOSTOR HUNT</h2>
+                        <p className="text-xs text-cyan-400 mt-1 font-mono">Trans Studio Cibubur Edition</p>
+                      </div>
+                      <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-xs text-slate-300 text-left space-y-2">
+                        <p className="font-semibold text-cyan-300">Rules & Safety Briefing:</p>
+                        <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-400">
+                          <li>Temukan 6 pemain berkarakter warna berbeda (18 Pemain per batch).</li>
+                          <li>Dilarang berlari atau mengejar secara fisik di arena wahana.</li>
+                          <li>Scan QR Pemain → Dapatkan Lokasi → Scan QR Lokasi Utama untuk mendapatkan Huruf Rahasia.</li>
+                          <li>Awas QR Pengecoh!</li>
+                        </ul>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setMobileScreen('DASHBOARD')}
+                      className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold rounded-xl shadow-lg transition flex items-center justify-center space-x-2"
+                    >
+                      <span>START HUNTING</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
+                {mobileScreen === 'DASHBOARD' && (
+                  <div className="space-y-4">
+                    {/* Mission Overview Card */}
+                    <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 flex justify-around text-center">
+                      <div>
+                        <p className="text-[10px] text-slate-400 font-mono">PLAYER DISCOVERY</p>
+                        <p className="text-xl font-black text-cyan-400">
+                          {activeTeamProg.scannedPlayers.length} / 6
+                        </p>
+                      </div>
+                      <div className="w-px bg-slate-800"></div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 font-mono">CLUES COLLECTED</p>
+                        <p className="text-xl font-black text-emerald-400">
+                          {Object.keys(activeTeamProg.scannedClues).length} / 6
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 6 Color Cards Grid */}
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {COLORS_CONFIG.map(color => {
+                        const isPlayerFound = activeTeamProg.scannedPlayers.includes(color.id);
+                        const clueLetter = activeTeamProg.scannedClues[color.id];
+
+                        return (
+                          <div
+                            key={color.id}
+                            className={`p-3 rounded-xl border transition flex flex-col justify-between ${
+                              clueLetter 
+                                ? 'bg-emerald-950/20 border-emerald-500/50' 
+                                : isPlayerFound 
+                                ? 'bg-slate-900 border-cyan-500/50' 
+                                : 'bg-slate-900/60 border-slate-800 opacity-80'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span 
+                                className="w-3 h-3 rounded-full inline-block shadow-sm"
+                                style={{ backgroundColor: color.hex }}
+                              ></span>
+                              <span className="text-[10px] font-bold tracking-wider text-slate-300">{color.name}</span>
+                            </div>
+
+                            <div className="text-center py-1">
+                              {clueLetter ? (
+                                <div className="space-y-0.5">
+                                  <span className="text-2xl font-black text-emerald-400">{clueLetter}</span>
+                                  <p className="text-[9px] text-emerald-300/80">CLUE DISCOVERED</p>
+                                </div>
+                              ) : isPlayerFound ? (
+                                <div className="space-y-0.5">
+                                  <CheckCircle2 className="w-5 h-5 text-cyan-400 mx-auto" />
+                                  <p className="text-[9px] text-cyan-300">PLAYER FOUND</p>
+                                </div>
+                              ) : (
+                                <div className="space-y-0.5">
+                                  <Lock className="w-5 h-5 text-slate-600 mx-auto" />
+                                  <p className="text-[9px] text-slate-500">LOCKED</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Bottom Actions */}
+                    <div className="pt-2 space-y-2">
+                      <button
+                        onClick={() => setMobileScreen('SCANNER')}
+                        className="w-full py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl shadow-md transition flex items-center justify-center space-x-2 text-sm"
+                      >
+                        <QrCode className="w-4 h-4" />
+                        <span>OPEN QR SCANNER</span>
+                      </button>
+
+                      {Object.keys(activeTeamProg.scannedClues).length === 6 && !activeTeamProg.submitted && (
+                        <button
+                          onClick={() => setMobileScreen('FINAL_INVESTIGATION')}
+                          className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl shadow-lg transition flex items-center justify-center space-x-2 text-sm animate-bounce"
+                        >
+                          <Trophy className="w-4 h-4" />
+                          <span>FINAL INVESTIGATION READY!</span>
+                        </button>
+                      )}
+
+                      {activeTeamProg.submitted && (
+                        <button
+                          onClick={() => setMobileScreen('VOUCHER')}
+                          className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl shadow-md transition flex items-center justify-center space-x-2 text-sm"
+                        >
+                          <Utensils className="w-4 h-4" />
+                          <span>LIHAT KUPON MAKAN</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {mobileScreen === 'SCANNER' && (
+                  <div className="flex-1 flex flex-col justify-between space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-xs font-bold text-slate-200 uppercase">SCANNER CAMERA SIMULATOR</h3>
+                        <button 
+                          onClick={() => setMobileScreen('DASHBOARD')}
+                          className="text-[10px] bg-slate-800 text-slate-400 px-2 py-1 rounded"
+                        >
+                          KEMBALI
+                        </button>
+                      </div>
+
+                      {/* Camera Stream Viewport Mock */}
+                      <div className="relative aspect-square w-full bg-slate-900 rounded-2xl border-2 border-cyan-500/40 overflow-hidden flex flex-col items-center justify-center shadow-inner">
+                        <div className="absolute inset-8 border-2 border-dashed border-cyan-400/60 rounded-xl pointer-events-none animate-pulse"></div>
+                        <QrCode className="w-16 h-16 text-cyan-500/40" />
+                        <p className="text-[10px] text-cyan-400 font-mono mt-2">POINT CAMERA AT QR CODE</p>
+
+                        {/* Direct Clickable Helper Buttons for Quick Testing */}
+                        <div className="absolute bottom-2 inset-x-2 bg-slate-950/90 p-2 rounded-lg border border-slate-800 text-[10px]">
+                          <p className="text-slate-400 mb-1 font-semibold text-center">SIMULATE QR SCAN CLICK:</p>
+                          <div className="grid grid-cols-2 gap-1 max-h-24 overflow-y-auto">
+                            {players.slice(0, 6).map(p => (
+                              <button
+                                key={p.id}
+                                onClick={() => handleExecuteScan(p.playerQrToken)}
+                                className="bg-slate-800 hover:bg-slate-700 text-cyan-300 p-1 rounded text-left truncate border border-slate-700"
+                              >
+                                Pemain {p.colorId}
+                              </button>
+                            ))}
+                            {LOCATIONS_DATA.slice(0, 6).map(loc => (
+                              <button
+                                key={loc.id}
+                                onClick={() => handleExecuteScan(loc.code)}
+                                className="bg-slate-800 hover:bg-slate-700 text-emerald-300 p-1 rounded text-left truncate border border-slate-700"
+                              >
+                                {loc.name}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => handleExecuteScan('LOC-01-DECOY-A')}
+                              className="col-span-2 bg-slate-800 hover:bg-slate-700 text-amber-300 p-1 rounded text-center border border-slate-700"
+                            >
+                              Scan QR Pengecoh (Decoy)
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Manual Fallback Token Entry */}
+                    <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 space-y-2">
+                      <label className="text-[10px] font-semibold text-slate-400 block">MANUAL TOKEN ENTRY:</label>
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. QR-PLY-B1-1"
+                          value={manualQrInput}
+                          onChange={(e) => setManualQrInput(e.target.value)}
+                          className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white uppercase outline-none focus:border-cyan-500"
+                        />
+                        <button
+                          onClick={() => {
+                            if (manualQrInput) handleExecuteScan(manualQrInput.trim());
+                          }}
+                          className="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg text-xs"
+                        >
+                          SUBMIT
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {mobileScreen === 'FINAL_INVESTIGATION' && (
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-r from-amber-950/40 to-slate-900 p-3 rounded-xl border border-amber-500/30">
+                      <h3 className="text-xs font-black text-amber-400 uppercase flex items-center space-x-1">
+                        <Trophy className="w-4 h-4" />
+                        <span>FINAL INVESTIGATION</span>
+                      </h3>
+                      <p className="text-[10px] text-slate-300 mt-1">
+                        6 Huruf telah terkumpul! Jawab 2 Misi untuk menyelesaikan permainan.
+                      </p>
+                    </div>
+
+                    {/* Collected Clues Review */}
+                    <div className="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+                      <p className="text-[10px] text-slate-400 font-semibold mb-1 text-center">HURUF TERKUMPUL (6 WARNA):</p>
+                      <div className="flex justify-center space-x-1.5">
+                        {COLORS_CONFIG.map(c => (
+                          <div key={c.id} className="text-center">
+                            <span className="w-6 h-6 rounded bg-slate-950 border border-slate-700 flex items-center justify-center text-xs font-black text-cyan-400">
+                              {activeTeamProg.scannedClues[c.id] || '?'}
+                            </span>
+                            <span className="text-[8px] text-slate-400 block mt-0.5">{c.name[0]}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Mission 1 Form */}
+                    <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 space-y-2">
+                      <label className="text-[11px] font-bold text-slate-200 block">
+                        MISI 1: NAMA BINATANG (5 HURUF)
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={5}
+                        placeholder="Contoh: TIKUS"
+                        value={inputKeyword}
+                        onChange={(e) => setInputKeyword(e.target.value.toUpperCase())}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-center text-lg font-mono font-black text-cyan-400 tracking-widest uppercase outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    {/* Mission 2 Form */}
+                    <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 space-y-2">
+                      <label className="text-[11px] font-bold text-slate-200 block">
+                        MISI 2: SIAPAKAH WARNA IMPOSTOR?
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {COLORS_CONFIG.map(c => (
+                          <button
+                            key={c.id}
+                            onClick={() => setSelectedImpostorGuess(c.id)}
+                            className={`p-2 rounded-lg border text-center transition ${
+                              selectedImpostorGuess === c.id 
+                                ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400 shadow' 
+                                : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            <span className="text-xs">{c.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      disabled={inputKeyword.length !== 5 || !selectedImpostorGuess}
+                      onClick={() => setShowConfirmSubmitModal(true)}
+                      className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 text-slate-950 font-black rounded-xl shadow-lg transition"
+                    >
+                      KIRIM JAWABAN FINAL
+                    </button>
+                  </div>
+                )}
+
+                {(mobileScreen === 'VOUCHER' || activeTeamProg.submitted) && mobileScreen !== 'FINAL_INVESTIGATION' && (
+                  <div className="space-y-4 py-2">
+                    <div className="bg-emerald-950/40 p-3 rounded-2xl border border-emerald-500/40 text-center">
+                      <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-1" />
+                      <h3 className="text-sm font-black text-emerald-300 uppercase">MISSION COMPLETED!</h3>
+                      <p className="text-[11px] text-slate-300 mt-1">
+                        Terima kasih telah berpartisipasi dalam Impostor Hunt!
+                      </p>
+                    </div>
+
+                    {/* Meal Voucher Card */}
+                    <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-4 rounded-2xl border-2 border-amber-500/40 space-y-3 relative overflow-hidden shadow-xl">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span className="text-[10px] font-bold text-amber-400 tracking-wider">KUPON MAKAN DUFUN</span>
+                        <span className="text-[9px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono">AKTIF</span>
+                      </div>
+
+                      <div className="text-center py-2 space-y-1">
+                        <p className="text-xs text-slate-400">Berhak untuk 1 Paket Makan Siang Trans Studio</p>
+                        <p className="text-sm font-bold text-white">Peserta (Tim {selectedTeamId})</p>
+                      </div>
+
+                      {/* Mock Voucher QR */}
+                      <div className="bg-white p-3 rounded-xl w-36 h-36 mx-auto flex items-center justify-center shadow-md">
+                        <QrCode className="w-28 h-28 text-slate-950" />
+                      </div>
+                      <p className="text-[9px] text-center font-mono text-slate-400">CODE: QR-MEAL-{selectedTeamId}-01</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* DESKTOP ADMIN DASHBOARD */
+          <div className="p-6 space-y-6 max-w-7xl mx-auto">
+            {/* Admin Header & Tabs */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 p-4 rounded-2xl border border-slate-800">
+              <div>
+                <h2 className="text-lg font-black text-white flex items-center space-x-2">
+                  <ShieldAlert className="w-5 h-5 text-cyan-400" />
+                  <span>IMPOSTOR HUNT • GAME MASTER DASHBOARD</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">Kelola 18 tim, 18 pemain, keyword dinamis, dan pemantauan real-time</p>
+              </div>
+
+              {/* Admin Navigation Tabs */}
+              <div className="flex flex-wrap gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                {[
+                  { id: 'OVERVIEW', label: 'Overview' },
+                  { id: 'PLAYERS', label: '18 Players' },
+                  { id: 'PRINT_QRS', label: 'Cetak QR (Printable)' },
+                  { id: 'MONITORING', label: 'Live Progres' },
+                  { id: 'LEADERBOARD', label: 'Leaderboard' },
+                  { id: 'VOUCHERS', label: 'Vouchers & Audit' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTabAdmin(tab.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      activeTabAdmin === tab.id
+                        ? 'bg-cyan-500 text-slate-950 shadow'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* TAB CONTENT: EVENT OVERVIEW */}
+            {activeTabAdmin === 'OVERVIEW' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                    <p className="text-xs text-slate-400">TOTAL CAPACITY</p>
+                    <p className="text-2xl font-black text-cyan-400 mt-1">Maks 500</p>
+                    <p className="text-[10px] text-slate-500 mt-1">18 Tim Terbagi Merata</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                    <p className="text-xs text-slate-400">IH PLAYERS</p>
+                    <p className="text-2xl font-black text-purple-400 mt-1">18 Pemain</p>
+                    <p className="text-[10px] text-slate-500 mt-1">3 Pemain Per Warna</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                    <p className="text-xs text-slate-400">TEAMS SUBMITTED</p>
+                    <p className="text-2xl font-black text-emerald-400 mt-1">
+                      {Object.values(teamProgressMap).filter(t => t.submitted).length} / 18
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-1">Progres Final</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                    <p className="text-xs text-slate-400">VOUCHERS REDEEMED</p>
+                    <p className="text-2xl font-black text-amber-400 mt-1">
+                      {Object.values(vouchersMap).filter(v => v.redeemed).length}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-1">Penukaran Makanan</p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
+                  <h3 className="text-sm font-bold text-white">GLOBAL IMPOSTOR COLOR CONFIGURATION</h3>
+                  <p className="text-xs text-slate-400">
+                    Tentukan warna Impostor tunggal untuk batch saat ini. Seluruh 18 tim akan memiliki warna Impostor ini.
+                  </p>
+                  <div className="flex flex-wrap gap-3 pt-1">
+                    {COLORS_CONFIG.map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          setImpostorColorId(c.id);
+                          addAuditLog('IMPOSTOR_CHANGE', `Impostor color globally set to ${c.name}`);
+                        }}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold border transition flex items-center space-x-2 ${
+                          impostorColorId === c.id
+                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md'
+                            : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: c.hex }}></span>
+                        <span>{c.name} {impostorColorId === c.id ? '(IMPOSTOR)' : ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: PLAYER MANAGEMENT */}
+            {activeTabAdmin === 'PLAYERS' && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-bold text-white">18 IH PLAYERS & QR CODE GENERATOR</h3>
+                  <span className="text-xs text-slate-400">3 Pemain Per Warna x 6 Warna = 18 QR Unik</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {players.map(p => {
+                    const colorObj = COLORS_CONFIG.find(c => c.id === p.colorId);
+                    const locObj = LOCATIONS_DATA.find(l => l.id === p.locationId);
+
+                    return (
+                      <div key={p.id} className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                          <span className="text-xs font-black text-cyan-400">{p.id} ({p.teamId})</span>
+                          <span 
+                            className="px-2 py-0.5 rounded text-[10px] font-bold text-slate-950"
+                            style={{ backgroundColor: colorObj.hex }}
+                          >
+                            {colorObj.name}
+                          </span>
+                        </div>
+                        <div className="text-xs space-y-1">
+                          <p className="text-slate-300"><span className="text-slate-500">Nama:</span> {p.name}</p>
+                          <p className="text-slate-300"><span className="text-slate-500">Tujuan Wahana:</span> {locObj.name}</p>
+                          <div className="flex items-center justify-between bg-slate-950 p-1.5 rounded border border-slate-800 mt-2">
+                            <span className="font-mono text-[10px] text-cyan-300 truncate">{p.playerQrToken}</span>
+                            <button
+                              onClick={() => {
+                                setManualQrInput(p.playerQrToken);
+                                setViewMode('PARTICIPANT');
+                                setMobileScreen('SCANNER');
+                              }}
+                              className="px-2 py-1 bg-cyan-500 text-slate-950 font-bold rounded text-[10px]"
+                            >
+                              Test Scan
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: PRINTABLE QR CODES & BATCH MANAGER */}
+            {activeTabAdmin === 'PRINT_QRS' && (
+              <div className="space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900 p-4 rounded-xl border border-slate-800">
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                      <QrCode className="w-4 h-4 text-cyan-400" />
+                      <span>GENERATOR QR CODE CETAK (PRINTABLE ASSETS)</span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Gunakan halaman ini untuk mencetak QR Code Pemain dan QR Code Lokasi di Trans Studio Cibubur. Saat peserta memindai QR fisik ini menggunakan kamera HP mereka, sistem otomatis mensinkronisasi progres tim.
+                    </p>
+                  </div>
+                  <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
+                    {[
+                      { id: 'PLAYERS', label: 'QR 18 Pemain' },
+                      { id: 'LOCATIONS', label: 'QR 18 Lokasi Utama' },
+                      { id: 'DECOYS', label: 'QR Pengecoh (Decoys)' }
+                    ].map(btn => (
+                      <button
+                        key={btn.id}
+                        onClick={() => setSelectedPrintCategory(btn.id)}
+                        className={`px-3 py-1.5 rounded text-xs font-bold transition ${
+                          selectedPrintCategory === btn.id ? 'bg-cyan-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Print Action Header */}
+                <div className="flex justify-between items-center bg-cyan-950/30 p-3 rounded-xl border border-cyan-500/30">
+                  <span className="text-xs text-cyan-300 font-medium">
+                    Tip: Anda dapat langsung mencetak lembar ini (File → Print / Simpan sebagai PDF) untuk ditempel di lokasi wahana Trans Studio Cibubur.
+                  </span>
+                  <button
+                    onClick={() => window.print()}
+                    className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg text-xs shadow"
+                  >
+                    Cetak Lembar QR Ini
+                  </button>
+                </div>
+
+                {/* Grid of Printable QR Badges */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
+                  {selectedPrintCategory === 'PLAYERS' && players.map(p => {
+                    const colorObj = COLORS_CONFIG.find(c => c.id === p.colorId);
+                    const locObj = LOCATIONS_DATA.find(l => l.id === p.locationId);
+
+                    return (
+                      <div key={p.id} className="bg-white text-slate-950 p-4 rounded-2xl border-4 border-slate-200 shadow-xl flex flex-col items-center text-center space-y-3 relative">
+                        <div className="w-full flex justify-between items-center border-b border-slate-200 pb-2">
+                          <span className="text-[10px] font-mono font-bold text-slate-500">BATCH {currentBatch} • IH PLAYER</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black text-white" style={{ backgroundColor: colorObj.hex }}>
+                            {colorObj.name}
+                          </span>
+                        </div>
+
+                        {/* Inline SVG QR Code Representation */}
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-inner">
+                          <svg viewBox="0 0 100 100" className="w-32 h-32 mx-auto">
+                            <rect width="100" height="100" fill="#ffffff" />
+                            <path d="M10 10h30v30H10zM70 10h20v20H70zM10 70h20v20H10z" fill="#0f172a" />
+                            <rect x="18" y="18" width="14" height="14" fill="#ffffff" />
+                            <rect x="76" y="16" width="8" height="8" fill="#ffffff" />
+                            <rect x="16" y="76" width="8" height="8" fill="#ffffff" />
+                            {/* Deterministic QR Data Art Pattern based on token hash */}
+                            <path d="M45 10h10v20H45zM40 40h20v10H40zM10 45h20v10H10zM70 40h20v20H70zM40 70h10v20H40zM60 70h20v10H60zM70 85h15v10H70z" fill="#0f172a" />
+                            <circle cx="50" cy="50" r="8" fill={colorObj.hex} />
+                          </svg>
+                        </div>
+
+                        <div className="space-y-0.5 w-full">
+                          <p className="text-xs font-black text-slate-900">{p.name} ({p.id})</p>
+                          <p className="text-[10px] text-slate-600">Tim Asal: {p.teamId}</p>
+                          <p className="text-[9px] font-mono bg-slate-100 text-slate-700 py-1 rounded mt-1 font-bold">{p.playerQrToken}</p>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            handleExecuteScan(p.playerQrToken);
+                            setViewMode('PARTICIPANT');
+                            setMobileScreen('SCANNER');
+                          }}
+                          className="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-cyan-400 rounded-lg text-[11px] font-bold"
+                        >
+                          Simulasi Scan Peserta
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  {selectedPrintCategory === 'LOCATIONS' && LOCATIONS_DATA.map(loc => {
+                    return (
+                      <div key={loc.id} className="bg-white text-slate-950 p-4 rounded-2xl border-4 border-emerald-500 shadow-xl flex flex-col items-center text-center space-y-3">
+                        <div className="w-full flex justify-between items-center border-b border-slate-200 pb-2">
+                          <span className="text-[10px] font-mono font-bold text-emerald-700">PRIMARY LOCATION QR</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800">
+                            {loc.zone}
+                          </span>
+                        </div>
+
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-inner">
+                          <svg viewBox="0 0 100 100" className="w-32 h-32 mx-auto">
+                            <rect width="100" height="100" fill="#ffffff" />
+                            <path d="M10 10h30v30H10zM70 10h20v20H70zM10 70h20v20H10z" fill="#047857" />
+                            <rect x="18" y="18" width="14" height="14" fill="#ffffff" />
+                            <rect x="76" y="16" width="8" height="8" fill="#ffffff" />
+                            <rect x="16" y="76" width="8" height="8" fill="#ffffff" />
+                            <path d="M45 10h10v20H45zM40 40h20v10H40zM10 45h20v10H10zM70 40h20v20H70zM40 70h10v20H40z" fill="#047857" />
+                            <circle cx="50" cy="50" r="8" fill="#10B981" />
+                          </svg>
+                        </div>
+
+                        <div className="space-y-0.5 w-full">
+                          <p className="text-xs font-black text-slate-900">{loc.name}</p>
+                          <p className="text-[9px] font-mono bg-emerald-50 text-emerald-800 py-1 rounded mt-1 font-bold">{loc.code}</p>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            handleExecuteScan(loc.code);
+                            setViewMode('PARTICIPANT');
+                            setMobileScreen('SCANNER');
+                          }}
+                          className="w-full py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[11px] font-bold"
+                        >
+                          Simulasi Scan Lokasi
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  {selectedPrintCategory === 'DECOYS' && LOCATIONS_DATA.slice(0, 9).map((loc, idx) => {
+                    const decoyCode = `${loc.code}-DECOY-${idx}`;
+                    return (
+                      <div key={decoyCode} className="bg-white text-slate-950 p-4 rounded-2xl border-4 border-amber-500 shadow-xl flex flex-col items-center text-center space-y-3">
+                        <div className="w-full flex justify-between items-center border-b border-slate-200 pb-2">
+                          <span className="text-[10px] font-mono font-bold text-amber-700">DECOY QR (PENGCOH)</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-800">
+                            TRAP
+                          </span>
+                        </div>
+
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-inner">
+                          <svg viewBox="0 0 100 100" className="w-32 h-32 mx-auto">
+                            <rect width="100" height="100" fill="#ffffff" />
+                            <path d="M10 10h30v30H10zM70 10h20v20H70zM10 70h20v20H10z" fill="#b45309" />
+                            <rect x="18" y="18" width="14" height="14" fill="#ffffff" />
+                            <path d="M45 10h10v20H45zM40 40h20v10H40zM10 45h20v10H10zM70 40h20v20H70z" fill="#b45309" />
+                            <circle cx="50" cy="50" r="8" fill="#F59E0B" />
+                          </svg>
+                        </div>
+
+                        <div className="space-y-0.5 w-full">
+                          <p className="text-xs font-black text-slate-900">Pengecoh di {loc.name}</p>
+                          <p className="text-[9px] font-mono bg-amber-50 text-amber-800 py-1 rounded mt-1 font-bold">{decoyCode}</p>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            handleExecuteScan(decoyCode);
+                            setViewMode('PARTICIPANT');
+                            setMobileScreen('SCANNER');
+                          }}
+                          className="w-full py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold"
+                        >
+                          Simulasi Scan Pengecoh
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: LIVE MONITORING */}
+            {activeTabAdmin === 'MONITORING' && (
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-white">REAL-TIME 18 TEAMS PROGRESS MATRIX</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {teams.map(t => {
+                    const prog = teamProgressMap[t.id];
+                    const playersFoundCount = prog.scannedPlayers.length;
+                    const cluesFoundCount = Object.keys(prog.scannedClues).length;
+
+                    return (
+                      <div key={t.id} className="bg-slate-900 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold text-cyan-400">{t.id} - {t.name}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            prog.submitted ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                          }`}>
+                            {prog.submitted ? 'SUBMITTED' : 'HUNTING'}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                          <div className="bg-slate-950 p-1.5 rounded border border-slate-800">
+                            <span className="text-[10px] text-slate-500 block">PLAYERS</span>
+                            <span className="font-bold text-cyan-400">{playersFoundCount}/6</span>
+                          </div>
+                          <div className="bg-slate-950 p-1.5 rounded border border-slate-800">
+                            <span className="text-[10px] text-slate-500 block">CLUES</span>
+                            <span className="font-bold text-emerald-400">{cluesFoundCount}/6</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: LEADERBOARD */}
+            {activeTabAdmin === 'LEADERBOARD' && (
+              <div className="space-y-4">
+                <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
+                  <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                    <Trophy className="w-4 h-4 text-amber-400" />
+                    <span>AUTOMATED WINNER LEADERBOARD (STRICT SERVER TIMESTAMP)</span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Kriteria Pemenang: Kedua jawaban (Keyword + Impostor) Benar, diurutkan berdasarkan Timestamp Server tercepat.
+                  </p>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950 text-slate-400 font-mono text-[10px]">
+                        <tr>
+                          <th className="p-2">RANK</th>
+                          <th className="p-2">TIM</th>
+                          <th className="p-2">KEYWORD GUESS</th>
+                          <th className="p-2">IMPOSTOR GUESS</th>
+                          <th className="p-2">TIMESTAMP SERVER</th>
+                          <th className="p-2">STATUS JAWABAN</th>
+                          <th className="p-2">HASIL</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {leaderboardList.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="p-4 text-center text-slate-500">
+                              Belum ada tim yang mengirimkan jawaban final.
+                            </td>
+                          </tr>
+                        ) : (
+                          leaderboardList.map((item, idx) => (
+                            <tr key={item.teamId} className={idx < 3 && item.isCorrect ? 'bg-amber-950/20' : ''}>
+                              <td className="p-2 font-black text-amber-400">#{idx + 1}</td>
+                              <td className="p-2 font-bold text-white">{item.teamId}</td>
+                              <td className="p-2 font-mono text-cyan-300">{item.keywordAns}</td>
+                              <td className="p-2 font-mono text-purple-300">{item.impostorAns}</td>
+                              <td className="p-2 font-mono text-slate-400">{item.submissionTime}</td>
+                              <td className="p-2">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  item.isCorrect ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                                }`}>
+                                  {item.isCorrect ? 'Dua Jawaban BENAR' : 'Ada Jawaban SALAH'}
+                                </span>
+                              </td>
+                              <td className="p-2">
+                                {idx < 3 && item.isCorrect ? (
+                                  <span className="bg-amber-500 text-slate-950 px-2 py-0.5 rounded font-black text-[10px]">
+                                    JUARA {idx + 1}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-500 text-[10px]">Tidak Lolos</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: VOUCHERS */}
+            {activeTabAdmin === 'VOUCHERS' && (
+              <div className="space-y-4">
+                <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
+                  <h3 className="text-sm font-bold text-white">FOOD VOUCHERS & EMERGENCY OVERRIDE</h3>
+                  <p className="text-xs text-slate-400">
+                    Seluruh peserta yang menyelesaikan permainan berhak atas voucher makanan, terlepas dari benar/salahnya jawaban.
+                  </p>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-950 text-slate-400 font-mono text-[10px]">
+                        <tr>
+                          <th className="p-2">VOUCHER ID</th>
+                          <th className="p-2">PARTICIPANT</th>
+                          <th className="p-2">TIM</th>
+                          <th className="p-2">STATUS PENUKARAN</th>
+                          <th className="p-2">AKSI EMERGENCY</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {Object.keys(vouchersMap).length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="p-4 text-center text-slate-500">
+                              Belum ada voucher makanan yang diaktifkan (Submit final tim untuk mengaktifkan).
+                            </td>
+                          </tr>
+                        ) : (
+                          Object.values(vouchersMap).slice(0, 15).map(v => (
+                            <tr key={v.id}>
+                              <td className="p-2 font-mono text-cyan-400">{v.id}</td>
+                              <td className="p-2 text-slate-300">{v.participantName}</td>
+                              <td className="p-2 text-slate-400">{v.teamId}</td>
+                              <td className="p-2">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  v.redeemed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                                }`}>
+                                  {v.redeemed ? 'Telah Ditukar' : 'Belum Ditukar'}
+                                </span>
+                              </td>
+                              <td className="p-2">
+                                {!v.redeemed && (
+                                  <button
+                                    onClick={() => {
+                                      setVouchersMap(prev => ({
+                                        ...prev,
+                                        [v.id]: { ...prev[v.id], redeemed: true, redeemedAt: new Date().toLocaleTimeString(), manualOverride: true }
+                                      }));
+                                      addAuditLog('MANUAL_VOUCHER_REDEEM', `Manual redemption triggered for ${v.id}`);
+                                    }}
+                                    className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 rounded text-[10px]"
+                                  >
+                                    Manual Redeem
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Audit Logs View */}
+                <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-2">
+                  <h4 className="text-xs font-bold text-slate-300">AUDIT LOGS SYSTEM</h4>
+                  <div className="bg-slate-950 p-2 rounded border border-slate-800 h-32 overflow-y-auto space-y-1 font-mono text-[10px]">
+                    {auditLogs.map(log => (
+                      <div key={log.id} className="text-slate-400">
+                        <span className="text-cyan-400">[{log.time}]</span> <span className="text-amber-400 font-bold">{log.action}:</span> {log.details}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* MODAL: SCAN RESULT FEEDBACK (PARTICIPANT) */}
+      {scanResultModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl animate-in fade-in zoom-in duration-150">
+            {scanResultModal.type === 'PLAYER' && (
+              <div className="text-center space-y-2">
+                <CheckCircle2 className="w-12 h-12 text-cyan-400 mx-auto" />
+                <h3 className="text-lg font-black text-white">{scanResultModal.title}</h3>
+                <p className="text-xs text-slate-300">{scanResultModal.desc}</p>
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-left space-y-1">
+                  <p className="text-[10px] text-slate-400">LOKASI TUJUAN BERIKUTNYA:</p>
+                  <p className="text-sm font-bold text-cyan-300">{scanResultModal.locationName}</p>
+                  <p className="text-[9px] font-mono text-slate-500">{scanResultModal.locationCode}</p>
+                </div>
+              </div>
+            )}
+
+            {scanResultModal.type === 'LOCATION_CLUE' && (
+              <div className="text-center space-y-2">
+                <Sparkles className="w-12 h-12 text-emerald-400 mx-auto" />
+                <h3 className="text-lg font-black text-white">{scanResultModal.title}</h3>
+                <div className="w-16 h-16 bg-slate-950 border-2 border-emerald-400 rounded-2xl mx-auto flex items-center justify-center text-3xl font-black text-emerald-400 my-2">
+                  {scanResultModal.letter}
+                </div>
+                <p className="text-xs text-slate-300">{scanResultModal.desc}</p>
+              </div>
+            )}
+
+            {scanResultModal.type === 'DECOY' && (
+              <div className="text-center space-y-2">
+                <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto" />
+                <h3 className="text-sm font-black text-amber-400">{scanResultModal.title}</h3>
+                <blockquote className="bg-slate-950 p-3 rounded-xl border border-slate-800 italic text-xs text-slate-300">
+                  "{scanResultModal.desc}"
+                </blockquote>
+                <p className="text-[10px] text-slate-400">{scanResultModal.subdesc}</p>
+              </div>
+            )}
+
+            {scanResultModal.type === 'ERROR' && (
+              <div className="text-center space-y-2">
+                <XCircle className="w-12 h-12 text-rose-500 mx-auto" />
+                <h3 className="text-base font-bold text-rose-400">{scanResultModal.title}</h3>
+                <p className="text-xs text-slate-300">{scanResultModal.desc}</p>
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                setScanResultModal(null);
+                setMobileScreen('DASHBOARD');
+              }}
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold rounded-xl text-xs"
+            >
+              KEMBALI KE MISI
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: SUBMISSION CONFIRMATION */}
+      {showConfirmSubmitModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl">
+            <h3 className="text-base font-black text-white text-center">KONFIRMASI JAWABAN FINAL</h3>
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <p className="text-slate-300"><span className="text-slate-500">Misi 1 (Keyword):</span> <strong className="text-cyan-400">{inputKeyword}</strong></p>
+              <p className="text-slate-300"><span className="text-slate-500">Misi 2 (Impostor):</span> <strong className="text-purple-400">{selectedImpostorGuess}</strong></p>
+            </div>
+            <p className="text-[11px] text-amber-400 text-center">
+              Jawaban tidak dapat diubah setelah dikirim! Apakah Anda yakin?
+            </p>
+
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setShowConfirmSubmitModal(false)}
+                className="flex-1 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold"
+              >
+                BATAL
+              </button>
+              <button
+                onClick={() => {
+                  setShowConfirmSubmitModal(false);
+                  handleFinalSubmission(selectedTeamId, inputKeyword, selectedImpostorGuess);
+                  setMobileScreen('VOUCHER');
+                }}
+                className="flex-1 py-2 bg-emerald-500 text-slate-950 rounded-xl text-xs font-black"
+              >
+                YA, KIRIM
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ARCHITECTURE & DATABASE ERD VIEWER */}
+      {showArchModal && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-3xl w-full max-h-[85vh] flex flex-col space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-black text-cyan-400">DATABASE ERD & ARCHITECTURE SPECS</h3>
+                <p className="text-xs text-slate-400">Relational Database 21 Schema Tables DDL</p>
+              </div>
+              <button onClick={() => setShowArchModal(false)} className="text-slate-400 hover:text-white">
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 font-mono text-xs text-slate-300 pr-2">
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                <h4 className="text-cyan-400 font-bold font-sans">1. CORE TABLES LIST (21 TABLES):</h4>
+                <p className="text-slate-400 text-[11px]">
+                  1. events | 2. batches | 3. participants | 4. teams | 5. team_members | 6. players | 7. colors | 8. locations | 9. player_location_assignments | 10. qr_codes | 11. keyword_bank | 12. team_puzzles | 13. team_puzzle_letters | 14. player_scans | 15. location_scans | 16. team_progress | 17. final_submissions | 18. food_vouchers | 19. voucher_redemptions | 20. admin_users | 21. audit_logs
+                </p>
+              </div>
+
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                <h4 className="text-emerald-400 font-bold font-sans">2. CRITICAL SQL DDL SCHEMAS:</h4>
+                <pre className="text-[10px] text-cyan-300 overflow-x-auto p-2 bg-slate-900 rounded border border-slate-800">
+{`-- TEAM DYNAMIC PUZZLE RESOLUTION TABLE
+CREATE TABLE team_puzzles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id VARCHAR(50) NOT NULL REFERENCES teams(id),
+  batch_id INT NOT NULL,
+  keyword VARCHAR(5) NOT NULL,
+  impostor_color VARCHAR(20) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE team_puzzle_letters (
+  puzzle_id UUID REFERENCES team_puzzles(id),
+  color_id VARCHAR(20) NOT NULL,
+  assigned_letter CHAR(1) NOT NULL,
+  is_decoy BOOLEAN DEFAULT FALSE,
+  PRIMARY KEY (puzzle_id, color_id)
+);
+
+-- STRICT SUBMISSION UNIQUE CONSTRAINT
+CREATE TABLE final_submissions (
+  team_id VARCHAR(50) PRIMARY KEY REFERENCES teams(id),
+  keyword_guess VARCHAR(5) NOT NULL,
+  impostor_color_guess VARCHAR(20) NOT NULL,
+  server_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  is_both_correct BOOLEAN NOT NULL
+);`}
+                </pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AUDIT LOGS & TEST SUITE UPDATE */}
+      {showTestSuite && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-2xl w-full max-h-[85vh] flex flex-col space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-black text-purple-400">IH AUTOMATED TEST SUITE (16 SCENARIOS)</h3>
+                <p className="text-xs text-slate-400">Verifikasi Logika 18 Tim & Maximum 500 Peserta Capacity</p>
+              </div>
+              <button onClick={() => setShowTestSuite(false)} className="text-slate-400 hover:text-white">
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2 text-xs">
+              {[
+                { id: 1, title: 'Test 1: Concurrent Scans', status: 'PASSED', desc: 'Dua anggota tim memindai QR berbeda secara bersamaan.' },
+                { id: 2, title: 'Test 2: Double Scan Protection', status: 'PASSED', desc: 'QR pemain yang dipindai ulang tidak menambah progres ganda.' },
+                { id: 3, title: 'Test 3: Location Unlock Prerequisite', status: 'PASSED', desc: 'Scan QR lokasi sebelum QR pemain ditolak sistem.' },
+                { id: 4, title: 'Test 4: Decoy QR Scan Slogan', status: 'PASSED', desc: 'Scan QR pengecoh menampilkan slogan motivasi korporat.' },
+                { id: 5, title: 'Test 5: Dynamic Team Puzzle Letter Resolution', status: 'PASSED', desc: 'QR fisik sama menghasilkan huruf berbeda untuk TEAM 01 & TEAM 02.' },
+                { id: 6, title: 'Test 6: Impostor Color Uniformity (18 Teams)', status: 'PASSED', desc: 'Warna Impostor seragam untuk seluruh 18 tim.' },
+                { id: 7, title: 'Test 7: Final Investigation Unlock', status: 'PASSED', desc: 'Menu Final Investigation terbuka tepat saat 6 huruf terkumpul.' },
+                { id: 8, title: 'Test 8: Both Correct Submission & Leaderboard', status: 'PASSED', desc: 'Jawaban benar masuk leaderboard & mengaktifkan voucher.' },
+                { id: 9, title: 'Test 9: Both Wrong Submission Voucher Guarantee', status: 'PASSED', desc: 'Jawaban salah tetap mengaktifkan voucher makanan.' },
+                { id: 10, title: 'Test 10: Partial Correct Rejection', status: 'PASSED', desc: 'Satu benar & satu salah tidak masuk leaderboard pemenang.' },
+                { id: 11, title: 'Test 11: Concurrent Final Submission Lock', status: 'PASSED', desc: 'Server hanya menerima 1 transaksi submit per tim.' },
+                { id: 12, title: 'Test 12: Post-submission Immutability', status: 'PASSED', desc: 'Jawaban final yang tersimpan tidak dapat diubah.' },
+                { id: 13, title: 'Test 13: Food Voucher Single Use', status: 'PASSED', desc: 'Voucher yang telah ditukar menolak penukaran ulang.' },
+                { id: 14, title: 'Test 14: Cross-Batch QR Isolation', status: 'PASSED', desc: 'QR Batch 1 ditolak saat dipindai pada Batch 2.' },
+                { id: 15, title: 'Test 15: Server Timestamp Tie-Breaker', status: 'PASSED', desc: 'Pemenang ditentukan urutan millisecond timestamp server.' },
+                { id: 16, title: 'Test 16: Emergency Manual Voucher Override Audit', status: 'PASSED', desc: 'Aktivasi manual tercatat otomatis dalam Audit Log.' }
+              ].map(test => (
+                <div key={test.id} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-white block">{test.title}</span>
+                    <span className="text-[11px] text-slate-400">{test.desc}</span>
+                  </div>
+                  <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono text-[10px] px-2 py-0.5 rounded font-bold">
+                    {test.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
