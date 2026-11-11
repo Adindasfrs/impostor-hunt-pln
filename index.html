@@ -11,6 +11,8 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <!-- Babel Standalone untuk JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- QR Code Generator Library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 font-sans antialiased">
     <div id="root"></div>
@@ -18,7 +20,7 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        // --- KONFIGURASI GLOBAL 18 TIM & 18 WAHANA TSB (DENGAN KATEGORI EXTREME - M) ---
+        // --- KONFIGURASI GLOBAL 18 TIM & 18 WAHANA TSB (-M = EXTREME) ---
         const ANIMAL_KEYWORDS = ["TIKUS", "GAJAH", "BADAK", "SINGA", "PANDA", "ZEBRA", "ELANG", "SEMUT", "LEBAH", "KATAK", "MACAN", "CICAK", "BEBEK", "BELUT", "KODOK", "TAPIR", "LUWAK", "KANCIL"];
         
         const COLORS_CONFIG = [
@@ -30,7 +32,6 @@
             { id: 'ORANGE', name: 'ORANGE', hex: '#F97316' }
         ];
 
-        // Daftar 18 Wahana Resmi Trans Studio Cibubur (-m adalah Extreme)
         const LOCATIONS_DATA = [
             { code: 'QR-LOC-01', locationId: 'LOC-01', name: '1. Science Center', isExtreme: false },
             { code: 'QR-LOC-02', locationId: 'LOC-02', name: '2. Magical Ball', isExtreme: false },
@@ -52,12 +53,32 @@
             { code: 'QR-LOC-18', locationId: 'LOC-18', name: '18. Kingkong Tower', isExtreme: false }
         ];
 
+        // Daftar QR Code Pengecoh (Decoy)
+        const DECOY_QR_DATA = [
+            { code: 'QR-DECOY-01', name: 'QR Pengecoh 1 (Jebakan Area Lobby)' },
+            { code: 'QR-DECOY-02', name: 'QR Pengecoh 2 (Jebakan Dekat Koridor)' },
+            { code: 'QR-DECOY-03', name: 'QR Pengecoh 3 (Jebakan Zona Wahana)' },
+            { code: 'QR-DECOY-04', name: 'QR Pengecoh 4 (Jebakan Area Konsumsi)' }
+        ];
+
         const CORPORATE_SLOGANS = [
             "\"Kolaborasi hebat dimulai dari keberanian untuk saling percaya. Semangat!\"[cite: 3]",
-            "\"Wah, hampir tepat! Tapi ini QR pengecoh. Ayo cari wahana berikutnya!\"[cite: 3]",
+            "\"Wah, hampir tepat! Tapi ini QR pengecoh. Silakan ulangi scan dari pemain dengan warna tersebut!\"[cite: 3, 10]",
             "\"Tetap semangat! Energi PLN Nusantara Power ada pada ketekunanmu.\"[cite: 3]",
             "\"Nice try! Senyumanmu lebih berharga dari QR ini. Coba cari lagi ya!\"[cite: 3]"
         ];
+
+        function QRCodeSVG({ text, size = 120 }) {
+            try {
+                var qr = qrcode(0, 'M');
+                qr.addData(text);
+                qr.make();
+                var svgTag = qr.createSvgTag({ scalable: true, margin: 2 });
+                return <div className="bg-white p-2 rounded-xl inline-block shadow" dangerouslySetInnerHTML={{ __html: svgTag }} style={{ width: size, height: size }} />;
+            } catch (e) {
+                return <div className="text-[10px] text-red-500 font-mono">Invalid QR</div>;
+            }
+        }
 
         const generateInitialTeams = () => Array.from({ length: 18 }, (_, idx) => ({
             id: `TEAM-${(idx + 1).toString().padStart(2, '0')}`,
@@ -68,7 +89,6 @@
 
         const generateInitialPlayers = (teams) => teams.map((team, idx) => {
             const colorObj = COLORS_CONFIG[idx % 6];
-            // Pastikan setiap tim mendapatkan kombinasi wahana (beberapa tim mendapatkan wahana -m Extreme)
             const loc = LOCATIONS_DATA[idx % LOCATIONS_DATA.length];
             return {
                 id: `QR-PLY-B1-${(idx + 1)}`,
@@ -121,7 +141,7 @@
             const [inputKeyword, setInputKeyword] = useState('');
             const [selectedImpostorGuess, setSelectedImpostorGuess] = useState('ORANGE');
             const [showConfirmSubmitModal, setShowConfirmSubmitModal] = useState(false);
-            const [adminTab, setAdminTab] = useState('OVERVIEW');
+            const [adminTab, setAdminTab] = useState('PRINTABLE');
 
             const activeTeam = teams.find(t => t.id === selectedTeamId) || teams[0];
 
@@ -129,13 +149,15 @@
                 setAuditLogs(prev => [{ id: `LOG-${Date.now().toString().slice(-4)}`, time: new Date().toLocaleTimeString(), action, details }, ...prev]);
             };
 
-            const processQrScanToken = (rawToken, isDecoy = false) => {
-                if (isDecoy) {
+            const processQrScanToken = (rawToken) => {
+                // Deteksi apakah token adalah QR Pengecoh (Decoy)
+                if (rawToken.startsWith('QR-DECOY-') || rawToken === 'DECOY') {
                     const randomSlogan = CORPORATE_SLOGANS[Math.floor(Math.random() * CORPORATE_SLOGANS.length)];
+                    addAuditLog('DECOY_SCANNED', `${activeTeam.name} memindai QR Pengecoh (Salah).`);
                     return {
                         type: 'DECOY',
                         title: '⚠️ PETUNJUK SALAH!',
-                        desc: `${randomSlogan} Silakan ulangi lagi proses scan dari pemain dengan warna tersebut[cite: 10].`
+                        desc: `${randomSlogan} Silakan ulangi proses scan dari pemain dengan warna tersebut[cite: 10].`
                     };
                 }
 
@@ -221,6 +243,26 @@
                 }).filter(item => item.isCorrect).sort((a, b) => a.submissionTime.localeCompare(b.submissionTime));
             }, [submissions, teams]);
 
+            const downloadQRAsFile = (codeText, filename) => {
+                try {
+                    var qr = qrcode(0, 'M');
+                    qr.addData(codeText);
+                    qr.make();
+                    var svgString = qr.createSvgString(6, 2);
+                    var blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${filename}.svg`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                } catch (e) {
+                    alert('Gagal mendownload QR Code.');
+                }
+            };
+
             return (
                 <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
                     <header className="bg-slate-900 border-b border-slate-800 px-4 py-3 flex flex-wrap justify-between items-center gap-4 sticky top-0 z-50">
@@ -284,7 +326,6 @@
                                     </div>
                                 )}
 
-                                {/* BRIEFING & PANDUAN KOMIK 9 LANGKAH */}
                                 {participantStep === 'BRIEFING' && (
                                     <div className="p-5 flex flex-col justify-between flex-1 space-y-4 overflow-y-auto max-h-[650px]">
                                         <div className="space-y-3">
@@ -294,8 +335,8 @@
                                                     <li><strong>07.30 WIB:</strong> Peserta berkumpul di Lobby 18 Office Park[cite: 9].</li>
                                                     <li><strong>08.00 - 08.15 WIB:</strong> Bus berangkat menuju Lobby TS Mall[cite: 9].</li>
                                                     <li><strong>Aturan Wahana:</strong> Setiap tim wajib menaklukkan wahana yang ditentukan (termasuk wahana berlabel <strong>-m (Extreme)</strong> memacu adrenalin!).</li>
+                                                    <li><strong>Waspada QR Pengecoh:</strong> Jangan terjebak QR jebakan di area TSB! Jika salah, ulangi scan dari pemain[cite: 10].</li>
                                                     <li><strong>14.30 WIB:</strong> Batas akhir keluar area permainan menuju titik kepulangan[cite: 11].</li>
-                                                    <li><strong>15.00 - 15.30 WIB:</strong> Bus pulang kembali ke Lobby 18 Office Park[cite: 11].</li>
                                                 </ul>
                                             </div>
 
@@ -303,10 +344,10 @@
                                                 <h3 className="font-black text-blue-400 text-xs uppercase tracking-wider">📖 Panduan 9 Langkah Permainan</h3>
                                                 <ol className="text-[11px] text-slate-300 space-y-1.5 list-decimal list-inside">
                                                     <li><strong>Cari Pemain:</strong> Temukan pemain ber-QR dengan warna tertentu[cite: 9].</li>
-                                                    <li><strong>Scan QR Pemain:</strong> Dapatkan informasi wahana tujuan (bisa berupa wahana Reguler atau Extreme `-m`)[cite: 9].</li>
+                                                    <li><strong>Scan QR Pemain:</strong> Dapatkan informasi wahana tujuan[cite: 9].</li>
                                                     <li><strong>Menuju Wahana:</strong> Segera menuju wahana yang ditunjuk[cite: 10].</li>
                                                     <li><strong>Mainkan Wahana:</strong> Nikmati aktivitas/permainan di wahana tersebut[cite: 10].</li>
-                                                    <li><strong>Cari & Scan QR Petunjuk:</strong> Ambil huruf petunjuk di area wahana[cite: 10].</li>
+                                                    <li><strong>Scan QR Petunjuk / Pengecoh:</strong> Ambil huruf petunjuk (hati-hati QR pengecoh!)[cite: 10].</li>
                                                     <li><strong>Kumpulkan Semua Huruf:</strong> Lengkapi 6 huruf dari 6 warna berbeda[cite: 11].</li>
                                                     <li><strong>Tulis Jawaban:</strong> Masukkan kata kunci 5 huruf & pilih warna Impostor[cite: 11].</li>
                                                     <li><strong>Aktivasi Voucher Makan:</strong> Tukarkan voucher di titik penukaran konsumsi[cite: 11].</li>
@@ -339,7 +380,7 @@
 
                                         {showComicGuide && (
                                             <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
-                                                <p>1. Cari Pemain ➔ 2. Scan QR Pemain (Wajib ke Wahana -m Extreme/Reguler) ➔ 3. Mainkan Wahana ➔ 4. Scan QR Petunjuk ➔ 5. Kumpul 6 Huruf ➔ 6. Submit Jawaban ➔ 7. Voucher Makan[cite: 9, 10, 11].</p>
+                                                <p>1. Cari Pemain ➔ 2. Scan QR Pemain ➔ 3. Ke Wahana (-m Extreme/Reguler) ➔ 4. Scan QR Petunjuk (Awas QR Pengecoh!) ➔ 5. Kumpul 6 Huruf ➔ 6. Submit Jawaban[cite: 9, 10, 11].</p>
                                             </div>
                                         )}
 
@@ -375,7 +416,7 @@
                                     <div className="p-4 flex flex-col justify-between flex-1 space-y-3">
                                         <div className="text-center space-y-0.5">
                                             <h3 className="text-sm font-black text-white">SCANNER KAMERA UTAMA</h3>
-                                            <p className="text-[11px] text-slate-400">Arahkan kamera ke QR di baju pemain atau lokasi wahana TSC</p>
+                                            <p className="text-[11px] text-slate-400">Arahkan kamera ke QR di baju pemain, wahana, atau QR pengecoh</p>
                                         </div>
 
                                         <div className="relative w-full h-48 bg-slate-950 rounded-2xl border-2 border-red-500/50 overflow-hidden flex flex-col items-center justify-center shadow-inner">
@@ -391,7 +432,7 @@
                                         </div>
 
                                         <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-2 overflow-y-auto max-h-52">
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase block">1. Scan QR Baju Pemain (Langkah 1 & 2):</span>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase block">1. Scan QR Baju Pemain:</span>
                                             <div className="grid grid-cols-3 gap-1.5">
                                                 {players.filter(p => p.teamId === activeTeam.id).map(pl => (
                                                     <button key={pl.id} onClick={() => { const res = processQrScanToken(pl.id); setScanResultModal(res); }} className="p-2 bg-slate-900 hover:bg-slate-800 rounded-xl border border-slate-700 text-xs font-bold text-white flex flex-col items-center gap-1">
@@ -402,7 +443,7 @@
                                             </div>
 
                                             <span className="text-[10px] font-bold text-slate-400 uppercase block mt-2">2. Scan QR Lokasi Wahana TSB (Termasuk -m Extreme):</span>
-                                            <div className="grid grid-cols-2 gap-1.5 max-h-32 overflow-y-auto">
+                                            <div className="grid grid-cols-2 gap-1.5 max-h-24 overflow-y-auto">
                                                 {LOCATIONS_DATA.map(loc => (
                                                     <button key={loc.code} onClick={() => { const res = processQrScanToken(loc.code); setScanResultModal(res); }} className={`p-2 rounded-xl border text-[10px] font-bold text-left truncate ${loc.isExtreme ? 'bg-red-950/40 border-red-500/50 text-red-300' : 'bg-slate-900 border-slate-700 text-slate-300'}`}>
                                                         {loc.name}
@@ -410,10 +451,14 @@
                                                 ))}
                                             </div>
 
-                                            <span className="text-[10px] font-bold text-orange-400 uppercase block mt-2">3. Simulasi QR Pengecoh (Jika Salah):</span>
-                                            <button onClick={() => { const res = processQrScanToken('DECOY', true); setScanResultModal(res); }} className="w-full p-2 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-500/40 rounded-xl text-xs font-bold text-orange-300">
-                                                ⚠️ Scan QR Pengecoh (Ulangi Scan Pemain)[cite: 10]
-                                            </button>
+                                            <span className="text-[10px] font-bold text-orange-400 uppercase block mt-2">3. Simulasi Scan QR Pengecoh (Decoy):</span>
+                                            <div className="grid grid-cols-2 gap-1.5">
+                                                {DECOY_QR_DATA.map(dec => (
+                                                    <button key={dec.code} onClick={() => { const res = processQrScanToken(dec.code); setScanResultModal(res); }} className="p-2 bg-orange-950/40 hover:bg-orange-900/50 border border-orange-500/40 rounded-xl text-[10px] font-bold text-orange-300 text-left truncate">
+                                                        ⚠️ {dec.name}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
 
                                         <button onClick={() => setParticipantStep('GAMEPLAY')} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2.5 rounded-xl text-xs">
@@ -492,14 +537,83 @@
 
                             </div>
                         ) : (
+                            /* DASHBOARD ADMIN DENGAN PUSAT DOWNLOAD QR CODE & DECOY */
                             <div className="space-y-6">
                                 <div className="flex flex-wrap gap-2 bg-slate-900 p-2 rounded-2xl border border-slate-800">
-                                    {['OVERVIEW', 'LEADERBOARD', 'MONITORING', 'LOGS'].map(tab => (
+                                    {['PRINTABLE', 'OVERVIEW', 'LEADERBOARD', 'MONITORING', 'LOGS'].map(tab => (
                                         <button key={tab} onClick={() => setAdminTab(tab)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${adminTab === tab ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
-                                            {tab}
+                                            {tab === 'PRINTABLE' ? '📥 Download & Cetak QR' : tab}
                                         </button>
                                     ))}
                                 </div>
+
+                                {adminTab === 'PRINTABLE' && (
+                                    <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-6">
+                                        <div className="flex flex-wrap justify-between items-center gap-4">
+                                            <div>
+                                                <h3 className="text-lg font-black text-white">Pusat Download & Cetak QR Code Fisik</h3>
+                                                <p className="text-xs text-slate-400">Unduh gambar QR code (SVG) untuk baju pemain, wahana TSB, dan QR Pengecoh.</p>
+                                            </div>
+                                            <button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg">
+                                                🖨️ Cetak Semua Halaman
+                                            </button>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <h4 className="text-sm font-black text-red-400 border-b border-slate-800 pb-2">1. QR Code 18 Baju Pemain (6 Warna)</h4>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                                {players.map(pl => (
+                                                    <div key={pl.id} className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col items-center text-center space-y-3">
+                                                        <div className="text-xs font-black uppercase" style={{ color: COLORS_CONFIG.find(c => c.id === pl.colorId)?.hex }}>
+                                                            Pemain Warna {pl.colorId} ({pl.teamName})
+                                                        </div>
+                                                        <QRCodeSVG text={pl.id} size={110} />
+                                                        <div className="text-[10px] text-slate-400 font-mono">Token: {pl.id}</div>
+                                                        <button onClick={() => downloadQRAsFile(pl.id, `QR-Pemain-${pl.colorId}-${pl.teamId}`)} className="w-full bg-slate-900 hover:bg-slate-800 text-blue-400 border border-slate-700 py-2 rounded-xl text-xs font-bold transition-all">
+                                                            📥 Download Gambar QR
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4 pt-4">
+                                            <h4 className="text-sm font-black text-blue-400 border-b border-slate-800 pb-2">2. QR Code 18 Lokasi Wahana TSB (Reguler & Extreme -m)</h4>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                                {LOCATIONS_DATA.map(loc => (
+                                                    <div key={loc.code} className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col items-center text-center space-y-3">
+                                                        <div className={`text-xs font-black ${loc.isExtreme ? 'text-red-400' : 'text-slate-200'}`}>
+                                                            {loc.name}
+                                                        </div>
+                                                        <QRCodeSVG text={loc.code} size={110} />
+                                                        <div className="text-[10px] text-slate-400 font-mono">Token: {loc.code}</div>
+                                                        <button onClick={() => downloadQRAsFile(loc.code, `QR-Lokasi-${loc.locationId}`)} className="w-full bg-slate-900 hover:bg-slate-800 text-blue-400 border border-slate-700 py-2 rounded-xl text-xs font-bold transition-all">
+                                                            📥 Download Gambar QR
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-4 pt-4">
+                                            <h4 className="text-sm font-black text-orange-400 border-b border-slate-800 pb-2">3. QR Code Pengecoh (Decoy / Jebakan Salah)</h4>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                                                {DECOY_QR_DATA.map(dec => (
+                                                    <div key={dec.code} className="bg-slate-950 p-4 rounded-2xl border border-orange-500/30 flex flex-col items-center text-center space-y-3">
+                                                        <div className="text-xs font-black text-orange-300">
+                                                            {dec.name}
+                                                        </div>
+                                                        <QRCodeSVG text={dec.code} size={110} />
+                                                        <div className="text-[10px] text-slate-400 font-mono">Token: {dec.code}</div>
+                                                        <button onClick={() => downloadQRAsFile(dec.code, `QR-Pengecoh-${dec.code}`)} className="w-full bg-orange-950/40 hover:bg-orange-900/50 text-orange-300 border border-orange-500/40 py-2 rounded-xl text-xs font-bold transition-all">
+                                                            📥 Download QR Pengecoh
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {adminTab === 'OVERVIEW' && (
                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -623,7 +737,7 @@
                                     <p className="text-xs text-red-400">{scanResultModal.desc}</p>
                                 )}
                                 <button onClick={() => setScanResultModal(null)} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-3 rounded-xl text-xs">
-                                    MENGERTI / LANJUT
+                                    MENGERTI / ULANGI SCAN
                                 </button>
                             </div>
                         </div>
